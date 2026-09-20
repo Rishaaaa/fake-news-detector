@@ -624,13 +624,28 @@ Understanding what the system **cannot** do matters as much as its accuracy.
    in this corpus were about, not deception itself. This is the project's most important
    methodological caveat.
 4. **English only.** The stopword list and lemmatizer are English-specific.
-5. **Short text is unreliable.** A headline or one-line claim leaves few tokens after
-   preprocessing, and the model will still report a high-looking probability based on
-   only two or three isolated words. The app detects this (fewer than
-   `MIN_SIGNAL_WORDS = 20` surviving words) and visibly flags the result as unreliable
-   rather than presenting it as a confident classification.
-6. **It can be evaded.** Anyone who knows the model can write around its patterns.
-7. **Bag-of-words ignores word order.** TF-IDF with bigrams captures some local context,
+5. **Short text is unreliable.** Measured accuracy by input length:
+
+   | Words after preprocessing | ~words typed | Accuracy |
+   |--------------------------:|-------------:|---------:|
+   | 3 | ~6 | 62.0% |
+   | 10 | ~22 | 71.4% |
+   | 50 | ~110 | 85.1% |
+   | Full article | — | 94.4% |
+
+   Critically, mean confidence stays near 87–94% across that whole range — **the model
+   cannot detect its own degradation**. The app therefore flags short input from the
+   word count (`MIN_SIGNAL_WORDS`), not from the probability.
+
+6. **It only works on political and world news.** Seven legitimate articles were tested:
+   political reporting from India, the UK and the US was classified correctly, but
+   sports, science, business and a cake recipe were all labelled FAKE — the science
+   article at 97.5% confidence. **The limitation is topic, not country.** An
+   out-of-domain detector catches text that is not news at all; it cannot reliably
+   separate sports or business *news* from political news, because doing so would mean
+   warning on 71% of legitimate articles. See `docs/PROJECT_REPORT.md` §22.8.
+7. **It can be evaded.** Anyone who knows the model can write around its patterns.
+8. **Bag-of-words ignores word order.** TF-IDF with bigrams captures some local context,
    but not sentence structure, negation or sarcasm.
 
 ---

@@ -521,6 +521,67 @@ implementation."
 
 ---
 
+### Q21b. Does your system work on all news, or only certain kinds?
+
+**Short answer.** It works on **political and world news from any country**, but not on
+other topics. I tested this rather than assumed it.
+
+**The experiment.** I submitted seven legitimate, neutrally-written news items:
+
+| Item | Domain | Verdict |
+|------|--------|---------|
+| Lok Sabha finance bill (India) | Politics | ✅ REAL |
+| Bank of England rate decision (UK) | Politics | ✅ REAL |
+| US Senate budget agreement | Politics | ✅ REAL |
+| Football match report | Sports | ❌ FAKE |
+| Clinical trial results | Science | ❌ FAKE (97.5% confident) |
+| Quarterly earnings | Business | ❌ FAKE |
+| Cake recipe | Not news | ❌ FAKE |
+
+**The key sentence to say:** *"The limitation is topic, not geography."* India and the UK
+aren't in my training data at all, yet both were classified correctly — so the model did
+learn transferable markers of political journalism. But everything outside politics
+failed, because the model effectively learned "political vocabulary ⇒ REAL", and
+unfamiliar vocabulary falls to FAKE by default.
+
+**What I did about it.** I added a detector measuring what fraction of a document's terms
+are among the model's 500 most influential features. I chose the threshold from measured
+data, not intuition:
+
+| Threshold | Genuine articles wrongly warned | Caught |
+|----------:|--------------------------------:|--------|
+| 0.10 | 4.7% | recipes, bare claims |
+| 0.15 | 41.8% | + business, science |
+| 0.18 | 71.1% | + sports |
+
+I used 0.10. **Catching sports news would mean warning on 71% of legitimate articles**,
+which makes the warning worthless. So the detector catches text that isn't news at all,
+and a permanent notice in the UI states the subject scope for the rest. I'd rather ship an
+honest partial fix than a warning nobody can trust.
+
+---
+
+### Q21c. Why does the warning use word count instead of the confidence score?
+
+**Short answer.** Because confidence doesn't fall when accuracy does. I measured it.
+
+| Words after preprocessing | Accuracy | Mean confidence |
+|--------------------------:|---------:|----------------:|
+| 3 | 62.0% | 86.9% |
+| 10 | 71.4% | 87.8% |
+| 50 | 85.1% | 89.4% |
+| Full article | 94.4% | 93.6% |
+
+**Accuracy drops 32 points; confidence drops under 7.** The model has no idea it is
+guessing. If I had driven the warning off the probability, a three-word fragment at 87%
+confidence would have sailed through unflagged.
+
+That is why `MIN_SIGNAL_WORDS` is counted from the text, not read off the score. It's a
+good example of why you measure a system's failure mode instead of assuming it degrades
+gracefully.
+
+---
+
 ### Q22. Your model is 94% accurate. Can I trust it to tell me if a news article is true?
 
 **Short answer.** No — and my system is deliberately designed to say so.

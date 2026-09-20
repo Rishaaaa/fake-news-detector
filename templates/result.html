@@ -28,7 +28,19 @@
         </div>
       {% endif %}
 
-      <div class="verdict verdict-{{ result.prediction|lower }}{% if result.low_signal %} is-unreliable{% endif %}">
+      {% if result.out_of_domain and not result.low_signal %}
+        <div class="notice notice-warning" style="margin:0 0 1.25rem;">
+          <span aria-hidden="true">&#9888;</span>
+          <span>
+            <strong>This doesn't look like news the model knows.</strong>
+            Almost none of this text's vocabulary carries learned weight, so the
+            result mostly reflects unfamiliar wording rather than a judgement about
+            the writing. Out-of-domain text is usually classified FAKE by default.
+          </span>
+        </div>
+      {% endif %}
+
+      <div class="verdict verdict-{{ result.prediction|lower }}{% if result.low_signal or result.out_of_domain %} is-unreliable{% endif %}">
         <div class="verdict-icon" aria-hidden="true">
           {% if result.prediction == 'FAKE' %}&#9888;{% else %}&#10003;{% endif %}
         </div>
@@ -40,7 +52,7 @@
             <div class="meter-head">
               <span class="text-muted">
                 Confidence &middot;
-                {% if result.low_signal %}not reliable{% else %}{{ result.confidence_label }}{% endif %}
+                {% if result.low_signal or result.out_of_domain %}not reliable{% else %}{{ result.confidence_label }}{% endif %}
               </span>
               <span class="meter-value">{{ "%.1f"|format(result.confidence * 100) }}%</span>
             </div>
@@ -132,7 +144,9 @@
         <dt>Prediction</dt>
         <dd><span class="badge badge-{{ result.prediction|lower }}">{{ result.prediction }}</span></dd>
         <dt>Confidence</dt><dd>{{ "%.2f"|format(result.confidence * 100) }}%</dd>
-        <dt>Certainty</dt><dd>{{ result.confidence_label }}</dd>
+        <dt>Certainty</dt>
+        <dd>{% if result.low_signal or result.out_of_domain %}Not reliable{% else %}{{ result.confidence_label }}{% endif %}</dd>
+        <dt>Domain match</dt><dd>{{ "%.0f"|format(result.domain_ratio * 100) }}%</dd>
         <dt>Words used</dt><dd>{{ "{:,}".format(result.word_count) }}</dd>
         <dt>Features</dt><dd>TF-IDF (1&ndash;2 grams)</dd>
       </dl>
@@ -142,6 +156,17 @@
       <div class="card-header"><h3>Submitted text</h3></div>
       {# Jinja2 autoescaping renders this safely - user text can never inject markup. #}
       <div class="text-preview">{{ submitted_text }}</div>
+    </div>
+
+    <div class="notice">
+      <span aria-hidden="true">&#9432;</span>
+      <span>
+        <strong>What this model covers.</strong> It was trained on
+        <strong>political and world news</strong>, and works on that subject in any
+        country. Results for <strong>sports, health, science, business or
+        entertainment</strong> are unreliable &mdash; that vocabulary is outside its
+        training data, so such articles are often labelled FAKE regardless of content.
+      </span>
     </div>
 
     <div class="notice notice-warning">

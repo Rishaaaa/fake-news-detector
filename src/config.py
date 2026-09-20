@@ -147,17 +147,40 @@ MAX_INPUT_LENGTH: int = 20_000    # characters - protects against huge payloads
 MAX_REQUEST_BYTES: int = 1 * 1024 * 1024  # 1 MB cap on any request body
 
 # --- Prediction reliability ---
-# Minimum number of words that must survive preprocessing for a prediction to
-# be considered dependable. Below this the result is flagged as "low signal".
+# Minimum number of words that must survive preprocessing before a prediction
+# is presented without a reliability warning.
 #
-# Why 20: preprocessing removes stopwords, so a short sentence collapses to
-# only two or three content words. With so few features the model is really
-# reporting the average association of those isolated words in the training
-# corpus rather than analysing an article, and it can do so with a
-# misleadingly high probability. Around 20 surviving words is where a document
-# carries enough distinct terms for the score to mean something. A typical
-# news paragraph clears this easily; a bare headline does not.
-MIN_SIGNAL_WORDS: int = 20
+# Measured accuracy against surviving word count, on the 1,261-article held-out
+# test set (see docs/PROJECT_REPORT.md section 22.7):
+#
+#      3 words -> 62.0%     20 words -> 77.3%     100 words -> 88.8%
+#      5 words -> 66.4%     30 words -> 81.4%     200 words -> 92.8%
+#     10 words -> 71.4%     50 words -> 85.1%     full      -> 94.4%
+#
+# Note that the model's *confidence* stays near 87-94% across this whole range,
+# so it cannot detect its own degradation - the warning has to come from the
+# word count, not from the probability.
+MIN_SIGNAL_WORDS: int = 5
+
+# --- Out-of-domain detection ---
+# The model was trained on political news. Text from another domain still gets
+# classified, usually as FAKE, because its vocabulary is unfamiliar.
+#
+# The detector measures what fraction of a document's terms are among the
+# model's most influential features. Measured trade-off on the test set:
+#
+#   threshold   genuine articles wrongly warned   clearly-not-news caught
+#      0.10                 4.7%                  recipes, bare claims
+#      0.15                41.8%                  + business, science
+#      0.18                71.1%                  + sports
+#
+# 0.10 is chosen deliberately: it reliably catches text that is not news at all
+# at a low false-warning cost. It does NOT reliably separate sports/business/
+# science *news* from political news - doing so would mean warning on most
+# legitimate articles. That broader limitation is covered by a static notice in
+# the UI instead, because no threshold here can fix it.
+DOMAIN_MARKER_TOP_N: int = 500
+DOMAIN_RATIO_THRESHOLD: float = 0.10
 
 # Number of history rows shown per page.
 HISTORY_PAGE_SIZE: int = 25

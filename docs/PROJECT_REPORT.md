@@ -1464,7 +1464,89 @@ domains, which would be lower. This is a well-documented limitation across the f
 detection literature (Zhou & Zafarani, 2020), and identifying it in one's own results is
 a mark of rigorous evaluation rather than a defect in the implementation.
 
-### 22.7 Comparison with published work
+### 22.7 Accuracy versus input length
+
+The headline 94.37% is measured on complete articles. Because users often submit only
+a headline or a single sentence, accuracy was re-measured against input length by
+truncating each test article to its first *N* surviving words.
+
+| Words after preprocessing | ≈ words typed | Accuracy | Mean confidence |
+|--------------------------:|--------------:|---------:|----------------:|
+| 3 | ~6 | 62.0% | 86.9% |
+| 5 | ~11 | 66.4% | 86.8% |
+| 10 | ~22 | 71.4% | 87.8% |
+| 15 | ~33 | 75.0% | 88.2% |
+| 20 | ~44 | 77.3% | 88.5% |
+| 30 | ~66 | 81.4% | 88.7% |
+| 50 | ~110 | 85.1% | 89.4% |
+| 100 | ~220 | 88.8% | 90.5% |
+| 200 | ~440 | 92.8% | 91.9% |
+| Full article | — | **94.4%** | 93.6% |
+
+**The critical observation is in the final column.** Accuracy falls by 32 percentage
+points between a full article and a three-word fragment, yet mean confidence moves by
+under seven points. *The model cannot detect its own degradation.* A short input
+produces a near-random answer delivered with the same apparent certainty as a reliable
+one.
+
+This has a direct design consequence: the reliability warning in the application is
+computed from the **surviving word count**, not from the probability, because the
+probability carries almost no information about whether the result can be trusted.
+The threshold is `MIN_SIGNAL_WORDS` in `src/config.py`.
+
+### 22.8 Domain generalisation
+
+A second experiment tested whether the model generalises beyond its training domain.
+Seven neutrally-written, legitimate news items were submitted:
+
+| Item | Domain | Verdict | Confidence |
+|------|--------|---------|-----------:|
+| Lok Sabha finance bill (India) | Politics | ✅ REAL | 82.2% |
+| Bank of England rate decision (UK) | Politics | ✅ REAL | 74.8% |
+| US Senate budget agreement | Politics | ✅ REAL | 96.1% |
+| Football match report | Sports | ❌ FAKE | 76.0% |
+| Clinical trial results | Science | ❌ FAKE | 97.5% |
+| Quarterly earnings report | Business | ❌ FAKE | 74.6% |
+| Cake recipe | Not news | ❌ FAKE | 95.8% |
+
+**The limitation is topic, not geography.** Political reporting from India and the
+United Kingdom — neither represented in the training corpus — was classified correctly,
+demonstrating that the model did learn transferable stylistic markers of political
+journalism. But every item outside politics was misclassified, the science article at
+97.5% confidence.
+
+The explanation follows directly from section 22.6: the model effectively learned
+*"political news vocabulary ⇒ REAL"*. Sports, health, science and business vocabulary
+carries no learned weight, so such documents fall to the FAKE side by default. This is
+the same mechanism that causes a claim such as "Apple is good for health" to be
+labelled FAKE.
+
+#### Out-of-domain detection
+
+A detector was added that measures the fraction of a document's terms appearing among
+the model's 500 most influential features. In-domain articles score 0.16–0.24; a recipe
+scores 0.00.
+
+The threshold was chosen from the measured trade-off rather than by intuition:
+
+| Threshold | Genuine articles wrongly warned | Out-of-domain items caught |
+|----------:|--------------------------------:|---------------------------|
+| 0.10 | 4.7% | recipes, bare claims |
+| 0.12 | 14.6% | recipes, bare claims |
+| 0.15 | 41.8% | + business, science |
+| 0.18 | 71.1% | + sports |
+
+`DOMAIN_RATIO_THRESHOLD = 0.10` was selected. The table shows why a higher value was
+rejected: catching sports news would require warning on **71% of legitimate articles**,
+making the warning meaningless.
+
+This is an honest partial solution. The detector reliably identifies text that is not
+news at all, but it **cannot** separate sports or business *news* from political news
+without unacceptable over-warning. That broader limitation is therefore addressed by a
+permanent notice in the interface stating the model's subject scope, since no threshold
+can resolve it. Fixing it properly requires a broader training corpus — see section 25.
+
+### 22.9 Comparison with published work
 
 | Source | Method | Reported accuracy |
 |--------|--------|------------------:|

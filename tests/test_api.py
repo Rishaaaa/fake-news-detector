@@ -152,6 +152,40 @@ class TestApiPrediction(FlaskTestCase):
         self.assertIn("This result is not reliable", body)
         self.assertIn("is-unreliable", body)
 
+    def test_out_of_domain_text_is_flagged(self):
+        """A recipe is not news - the domain check must catch it."""
+        recipe = (
+            "Preheat the oven to 180 degrees and grease a round cake tin. Cream "
+            "the butter and sugar together until pale, then beat in the eggs one "
+            "at a time. Fold in the flour and bake for 35 minutes."
+        )
+        payload = self.client.post("/api/predict", json={"text": recipe}).get_json()
+        self.assertTrue(payload["out_of_domain"])
+        self.assertLess(payload["domain_ratio"], config.DOMAIN_RATIO_THRESHOLD)
+        self.assertIn("does not look like", payload["explanation"])
+
+    def test_political_news_is_not_flagged_as_out_of_domain(self):
+        """In-domain news must not trigger a spurious domain warning."""
+        payload = self.client.post(
+            "/api/predict", json={"text": VALID_TEXT}
+        ).get_json()
+        self.assertFalse(payload["out_of_domain"])
+        self.assertGreaterEqual(
+            payload["domain_ratio"], config.DOMAIN_RATIO_THRESHOLD
+        )
+
+    def test_out_of_domain_warning_is_shown_on_the_result_page(self):
+        recipe = (
+            "Preheat the oven to 180 degrees and grease a round cake tin. Cream "
+            "the butter and sugar together until pale, then beat in the eggs one "
+            "at a time. Fold in the flour and bake for 35 minutes."
+        )
+        body = self.client.post(
+            "/predict", data={"news_text": recipe}
+        ).get_data(as_text=True)
+        self.assertIn("look like news the model knows", body)
+        self.assertIn("is-unreliable", body)
+
     def test_form_submission_renders_result(self):
         response = self.client.post("/predict", data={"news_text": VALID_TEXT})
         self.assertEqual(response.status_code, 200)

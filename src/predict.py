@@ -78,6 +78,7 @@ class FakeNewsPredictor:
     def __init__(self, eager: bool = False) -> None:
         self._model: Optional[object] = None
         self._vectorizer: Optional[object] = None
+        self._strong_features: Optional[frozenset] = None
         self._preprocessor = TextPreprocessor()
         if eager:
             self.load()
@@ -118,6 +119,10 @@ class FakeNewsPredictor:
                 "They may be corrupt - retrain with: python src/train_model.py"
             ) from exc
 
+        # The marker set is derived from the model, so it must be recomputed
+        # if a different model is ever loaded into this instance.
+        self._strong_features = None
+
         logger.info(
             "Loaded %s with a %d-term vocabulary.",
             self.model_name, len(getattr(self._vectorizer, "vocabulary_", {})),
@@ -152,6 +157,11 @@ class FakeNewsPredictor:
         ``confidence_label``  "High" / "Moderate" / "Low"
         ``top_features``    influential terms (empty for non-linear models)
         ``word_count``      number of words kept after preprocessing
+        ``low_signal``      True when too little text survived preprocessing
+        ``out_of_domain``   True when the text does not resemble the training
+                            corpus (see ``domain_ratio``)
+        ``domain_ratio``    fraction of the document's terms that the model
+                            considers influential
         ``disclaimer``      the standard responsible-use notice
 
         Raises
@@ -179,9 +189,14 @@ class FakeNewsPredictor:
         probabilities = self._predict_proba(features)
         confidence = probabilities.get(predicted, 0.0)
 
+        ratio = self.domain_ratio(features)
+        out_of_domain = ratio < config.DOMAIN_RATIO_THRESHOLD
+
         result = {
             "prediction": predicted,
             "confidence": round(float(confidence), 4),
+            "out_of_domain": out_of_domain,
+            "domain_ratio": round(float(ratio), 4),
             "probabilities": {k: round(float(v), 4) for k, v in probabilities.items()},
             "model": self.model_name,
             "confidence_label": self._confidence_label(confidence),
@@ -263,6 +278,18 @@ class FakeNewsPredictor:
                 f"(one or more paragraphs) for a meaningful result."
             )
 
+        # Out-of-domain text is classified anyway, usually as FAKE, because its
+        # vocabulary is unfamiliar rather than because it looks deceptive.
+        if result.get("out_of_domain"):
+            return (
+                f"Model prediction: {label} - but this text does not look like the "
+                f"news articles the model was trained on. Very few of its words "
+                f"carry any learned weight, so the {percentage:.1f}% figure mostly "
+                f"reflects unfamiliar vocabulary rather than a judgement about the "
+                f"writing. Out-of-domain text is usually classified FAKE by default. "
+                f"Treat this result as uninformative."
+            )
+
         sentence = (
             f"Model prediction: {label}. The model assigns {percentage:.1f}% "
             f"probability to this class ({descriptor} confidence), meaning "
@@ -339,6 +366,51 @@ class FakeNewsPredictor:
             for item in top:
                 item["weight"] = round(item["contribution"] / largest, 4) if largest else 0.0
         return top
+
+    # -- out-of-domain detection ------------------------------------------
+    def _strong_feature_indices(self) -> Optional[frozenset]:
+        """
+        Return the indices of the model's most influential features.
+
+        These are derived from the loaded model's own coefficients, so no extra
+        artefact has to be saved and the set automatically matches whichever
+        model was selected during training. Cached after the first call.
+        """
+        if self._strong_features is not None:
+            return self._strong_features
+
+        coefficients = self._get_coefficients()
+        if coefficients is None:
+            # Non-linear model (e.g. Random Forest): fall back to impurity
+            # importances if available, otherwise disable the check.
+            importances = getattr(self._model, "feature_importances_", None)
+            if importances is None:
+                self._strong_features = frozenset()
+                return self._strong_features
+            coefficients = np.asarray(importances)
+
+        ranked = np.argsort(np.abs(coefficients))[-config.DOMAIN_MARKER_TOP_N:]
+        self._strong_features = frozenset(int(i) for i in ranked)
+        return self._strong_features
+
+    def domain_ratio(self, features: csr_matrix) -> float:
+        """
+        Fraction of this document's terms that are influential for the model.
+
+        A political news article typically scores around 0.16-0.24. Text from
+        outside the training domain scores lower because almost none of its
+        vocabulary carries learned weight. Returns 1.0 (i.e. "no concern") when
+        the check cannot be performed, so a missing signal never produces a
+        spurious warning.
+        """
+        strong = self._strong_feature_indices()
+        if not strong:
+            return 1.0
+
+        present = features.tocsr().indices
+        if len(present) == 0:
+            return 0.0
+        return sum(1 for index in present if int(index) in strong) / len(present)
 
     def _get_coefficients(self) -> Optional[np.ndarray]:
         """Return the flat coefficient vector of the loaded linear model."""
