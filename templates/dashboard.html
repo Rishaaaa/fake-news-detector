@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% block title %}Dashboard &middot; {{ app_title }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Analytics dashboard</h1>
+  <p class="subtitle">
+    Live usage statistics from this installation, alongside the evaluation
+    metrics measured when the model was trained.
+  </p>
+</div>
+
+{% if not metrics %}
+  <div class="notice notice-warning">
+    <span aria-hidden="true">&#9888;</span>
+    <span>
+      <strong>No evaluation metrics available.</strong>
+      Run <code class="mono">python src/train_model.py</code> to train the model and
+      generate <code class="mono">models/metrics.json</code>.
+    </span>
+  </div>
+{% endif %}
+
+<!-- ---------- Usage stat tiles ---------- -->
+<h2 class="visually-hidden">Usage statistics</h2>
+<div class="stat-grid">
+  <div class="stat-tile">
+    <div class="stat-label">Total predictions</div>
+    <div class="stat-value tabular">{{ "{:,}".format(stats.total) }}</div>
+    <div class="stat-note">Across web and API</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Predicted fake</div>
+    <div class="stat-value tabular is-fake">{{ "{:,}".format(stats.fake_count) }}</div>
+    <div class="stat-note">{{ stats.fake_percentage }}% of all predictions</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Predicted real</div>
+    <div class="stat-value tabular is-real">{{ "{:,}".format(stats.real_count) }}</div>
+    <div class="stat-note">{{ stats.real_percentage }}% of all predictions</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Avg. confidence</div>
+    <div class="stat-value tabular">
+      {% if stats.total %}{{ "%.1f"|format(stats.avg_confidence * 100) }}%{% else %}&mdash;{% endif %}
+    </div>
+    <div class="stat-note">Mean probability of the chosen class</div>
+  </div>
+</div>
+
+{% if metrics %}
+<!-- ---------- Model quality tiles ---------- -->
+<h2 style="margin-top:2rem;">Model performance</h2>
+<p class="text-small text-muted" style="margin-top:-0.25rem;">
+  Measured on the held-out test split ({{ "{:,}".format(metrics.split.test_rows) }} articles the
+  model never saw during training). Positive class = {{ metrics.positive_class }}.
+</p>
+<div class="stat-grid">
+  <div class="stat-tile">
+    <div class="stat-label">Accuracy</div>
+    <div class="stat-value tabular">{{ "%.2f"|format(metrics.test_metrics.accuracy * 100) }}%</div>
+    <div class="stat-note">Correct out of all predictions</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Precision</div>
+    <div class="stat-value tabular">{{ "%.2f"|format(metrics.test_metrics.precision * 100) }}%</div>
+    <div class="stat-note">Of those flagged FAKE, how many were</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Recall</div>
+    <div class="stat-value tabular">{{ "%.2f"|format(metrics.test_metrics.recall * 100) }}%</div>
+    <div class="stat-note">Of all FAKE articles, how many were caught</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">F1-score</div>
+    <div class="stat-value tabular">{{ "%.2f"|format(metrics.test_metrics.f1 * 100) }}%</div>
+    <div class="stat-note">Harmonic mean of precision and recall</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ---------- Charts ---------- -->
+<div class="chart-grid" style="margin-top:var(--gap);">
+  <div class="card">
+    <div class="card-header">
+      <h3>Fake vs real predictions</h3>
+      <span class="card-title-note">This installation</span>
+    </div>
+    {% if stats.total %}
+      <div class="chart-box" style="height:260px;">
+        <canvas id="chartSplit" aria-label="Doughnut chart of fake versus real predictions"></canvas>
+      </div>
+      <p class="chart-caption">
+        {{ "{:,}".format(stats.fake_count) }} fake &middot;
+        {{ "{:,}".format(stats.real_count) }} real
+      </p>
+    {% else %}
+      <div class="empty-state" style="padding:2rem 1rem;">
+        <p class="text-small">No predictions recorded yet.</p>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('index') }}">Analyze news</a>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if metrics %}
+  <div class="card">
+    <div class="card-header">
+      <h3>Confusion matrix</h3>
+      <span class="card-title-note">{{ metrics.selected_model }}</span>
+    </div>
+    {% set cm = metrics.confusion_matrix.matrix %}
+    {% set total_cm = cm[0][0] + cm[0][1] + cm[1][0] + cm[1][1] %}
+    <div class="cm-grid">
+      <div></div>
+      <div class="cm-head">Predicted FAKE</div>
+      <div class="cm-head">Predicted REAL</div>
+
+      <div class="cm-side">Actual<br>FAKE</div>
+      <div class="cm-cell" style="background:var(--real-soft); color:var(--real);">
+        <strong>{{ cm[0][0] }}</strong><span>True positive</span>
+      </div>
+      <div class="cm-cell" style="background:var(--fake-soft); color:var(--fake);">
+        <strong>{{ cm[0][1] }}</strong><span>False negative</span>
+      </div>
+
+      <div class="cm-side">Actual<br>REAL</div>
+      <div class="cm-cell" style="background:var(--fake-soft); color:var(--fake);">
+        <strong>{{ cm[1][0] }}</strong><span>False positive</span>
+      </div>
+      <div class="cm-cell" style="background:var(--real-soft); color:var(--real);">
+        <strong>{{ cm[1][1] }}</strong><span>True negative</span>
+      </div>
+    </div>
+    <p class="chart-caption">
+      The diagonal holds correct predictions ({{ cm[0][0] + cm[1][1] }} of {{ total_cm }}).
+      Off-diagonal cells are the model's two kinds of mistake.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+{% if metrics %}
+<!-- ---------- Model comparison ---------- -->
+<div class="card">
+  <div class="card-header">
+    <h2>Model comparison</h2>
+    <span class="card-title-note">
+      Selected by: {{ metrics.selection_criterion }}
+    </span>
+  </div>
+
+  <div class="chart-box" style="height:320px;">
+    <canvas id="chartModels" aria-label="Grouped bar chart comparing the four algorithms"></canvas>
+  </div>
+
+  <!-- Table view: the required alternative to reading the chart by colour. -->
+  <div class="table-wrap" style="margin-top:1.25rem;">
+    <table>
+      <caption class="visually-hidden">Model comparison metrics</caption>
+      <thead>
+        <tr>
+          <th scope="col">Model</th>
+          <th scope="col" class="numeric">Accuracy</th>
+          <th scope="col" class="numeric">Precision</th>
+          <th scope="col" class="numeric">Recall</th>
+          <th scope="col" class="numeric">F1</th>
+          <th scope="col" class="numeric">CV F1 (train)</th>
+          <th scope="col" class="numeric">Fit time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in metrics.model_comparison %}
+          <tr {% if row.name == metrics.selected_model %}class="is-best"{% endif %}>
+            <td>
+              {{ row.name }}
+              {% if row.name == metrics.selected_model %}
+                <span class="badge badge-neutral" style="margin-left:0.4rem;">Selected</span>
+              {% endif %}
+            </td>
+            <td class="numeric">{{ "%.4f"|format(row.accuracy) }}</td>
+            <td class="numeric">{{ "%.4f"|format(row.precision) }}</td>
+            <td class="numeric">{{ "%.4f"|format(row.recall) }}</td>
+            <td class="numeric">{{ "%.4f"|format(row.f1) }}</td>
+            <td class="numeric">{{ "%.4f"|format(row.cv_f1_mean) }} &plusmn; {{ "%.3f"|format(row.cv_f1_std) }}</td>
+            <td class="numeric">{{ "%.2f"|format(row.train_seconds) }}s</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="chart-caption">
+    Accuracy, precision, recall and F1 are measured on the test split. The model was
+    chosen using <strong>CV F1</strong>, which is measured on the training split only &mdash;
+    so the test numbers stay an honest estimate of unseen performance.
+  </p>
+</div>
+
+<!-- ---------- Per-class performance ---------- -->
+<div class="card">
+  <div class="card-header">
+    <h2>Per-class performance</h2>
+    <span class="card-title-note">Where the model is strongest</span>
+  </div>
+  <div class="chart-box" style="height:280px;">
+    <canvas id="chartPerClass" aria-label="Bar chart of precision, recall and F1 for each class"></canvas>
+  </div>
+  <div class="table-wrap" style="margin-top:1.25rem;">
+    <table>
+      <caption class="visually-hidden">Per-class metrics</caption>
+      <thead>
+        <tr>
+          <th scope="col">Class</th>
+          <th scope="col" class="numeric">Precision</th>
+          <th scope="col" class="numeric">Recall</th>
+          <th scope="col" class="numeric">F1</th>
+          <th scope="col" class="numeric">Support</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for label, values in metrics.per_class_metrics.items() %}
+          <tr>
+            <td><span class="badge badge-{{ label|lower }}">{{ label }}</span></td>
+            <td class="numeric">{{ "%.4f"|format(values.precision) }}</td>
+            <td class="numeric">{{ "%.4f"|format(values.recall) }}</td>
+            <td class="numeric">{{ "%.4f"|format(values.f1) }}</td>
+            <td class="numeric">{{ "{:,}".format(values.support) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ---------- Training configuration ---------- -->
+<div class="split">
+  <div class="card">
+    <div class="card-header"><h3>Training configuration</h3></div>
+    <dl class="spec-list">
+      <dt>Selected model</dt><dd>{{ metrics.selected_model }}</dd>
+      <dt>Trained at</dt><dd class="mono text-small">{{ metrics.trained_at|replace('T', ' ')|replace('+00:00', ' UTC') }}</dd>
+      <dt>Dataset rows</dt><dd>{{ "{:,}".format(metrics.dataset.total_rows) }}</dd>
+      <dt>Fake / Real</dt><dd>{{ "{:,}".format(metrics.dataset.fake_rows) }} / {{ "{:,}".format(metrics.dataset.real_rows) }}</dd>
+      <dt>Test split</dt><dd>{{ (metrics.split.test_size * 100)|int }}% ({{ "{:,}".format(metrics.split.test_rows) }} rows)</dd>
+      <dt>Random state</dt><dd>{{ metrics.split.random_state }}</dd>
+      <dt>Vocabulary</dt><dd>{{ "{:,}".format(metrics.tfidf_parameters.vocabulary_size) }} terms</dd>
+      <dt>N-gram range</dt><dd>{{ metrics.tfidf_parameters.ngram_range[0] }}&ndash;{{ metrics.tfidf_parameters.ngram_range[1] }}</dd>
+      <dt>min_df / max_df</dt><dd>{{ metrics.tfidf_parameters.min_df }} / {{ metrics.tfidf_parameters.max_df }}</dd>
+      <dt>CV folds</dt><dd>{{ metrics.cross_validation.folds }}</dd>
+      <dt>scikit-learn</dt><dd>{{ metrics.environment.scikit_learn }}</dd>
+    </dl>
+  </div>
+
+  {% if metrics.top_features %}
+  <div class="card">
+    <div class="card-header">
+      <h3>Strongest learned terms</h3>
+      <span class="card-title-note">Global, across the whole dataset</span>
+    </div>
+    {% for label, features in metrics.top_features.items() %}
+      <p style="margin:0 0 0.5rem;">
+        <span class="badge badge-{{ label|lower }}">{{ label }}</span>
+      </p>
+      <p class="text-small" style="color:var(--ink-secondary);">
+        {% for term, weight in features[:12] %}<code class="mono">{{ term }}</code>{% if not loop.last %} &middot; {% endif %}{% endfor %}
+      </p>
+    {% endfor %}
+    <p class="chart-caption">
+      These are the terms with the largest learned weights. They reflect the topics and
+      writing style of the training data &mdash; not a rule about what is true.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ---------- Generated report images ---------- -->
+{% if report_images %}
+<div class="card">
+  <div class="card-header">
+    <h2>Generated evaluation reports</h2>
+    <span class="card-title-note">Saved to reports/ during training</span>
+  </div>
+  <div class="chart-grid">
+    {% for filename in report_images %}
+      <figure style="margin:0;">
+        <img class="report-image" src="{{ url_for('report_image', filename=filename) }}"
+             alt="{{ filename|replace('_', ' ')|replace('.png', '') }} chart" loading="lazy">
+        <figcaption class="chart-caption">{{ filename }}</figcaption>
+      </figure>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{# Chart data is emitted as JSON and parsed by script.js - never interpolated into JS code. #}
+<script id="dashboardData" type="application/json">
+{{ {
+  'usage': {'fake': stats.fake_count, 'real': stats.real_count},
+  'models': metrics.model_comparison if metrics else [],
+  'perClass': metrics.per_class_metrics if metrics else {}
+} | tojson }}
+</script>
+<script>window.initDashboardCharts && window.initDashboardCharts();</script>
+{% endblock %}

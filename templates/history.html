@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Prediction History &middot; {{ app_title }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Prediction history</h1>
+  <p class="subtitle">
+    Every analysis performed by this installation, stored locally in SQLite.
+  </p>
+</div>
+
+<div class="card">
+  <!-- ---------- Filters: one row above the table ---------- -->
+  <form method="GET" action="{{ url_for('history') }}" class="toolbar" role="search">
+    <div class="grow">
+      <label for="search" class="visually-hidden"></label>
+      <input type="search" id="search" name="search" value="{{ search }}"
+             placeholder="Search stored text&hellip;" aria-label="Search prediction history">
+    </div>
+
+    {# The filter is carried as a hidden field so searching preserves it. #}
+    <input type="hidden" name="filter" value="{{ label_filter }}">
+
+    <div class="filter-chips" role="group" aria-label="Filter by prediction">
+      <a class="chip" href="{{ url_for('history', search=search) }}"
+         aria-pressed="{{ 'true' if not label_filter else 'false' }}">All</a>
+      <a class="chip" href="{{ url_for('history', search=search, filter='FAKE') }}"
+         aria-pressed="{{ 'true' if label_filter == 'FAKE' else 'false' }}">Fake</a>
+      <a class="chip" href="{{ url_for('history', search=search, filter='REAL') }}"
+         aria-pressed="{{ 'true' if label_filter == 'REAL' else 'false' }}">Real</a>
+    </div>
+
+    <button type="submit" class="btn btn-secondary btn-sm">Search</button>
+    {% if search or label_filter %}
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('history') }}">Reset</a>
+    {% endif %}
+  </form>
+
+  {% if rows %}
+    <div class="table-wrap">
+      <table>
+        <caption class="visually-hidden">Stored predictions</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="numeric">#</th>
+            <th scope="col">Text</th>
+            <th scope="col">Prediction</th>
+            <th scope="col" class="numeric">Confidence</th>
+            <th scope="col">Model</th>
+            <th scope="col">Date &amp; time (UTC)</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td class="numeric text-muted">{{ row.id }}</td>
+              <td style="max-width:360px;">
+                <div style="overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">
+                  {{ row.input_text }}
+                </div>
+              </td>
+              <td><span class="badge badge-{{ row.prediction|lower }}">{{ row.prediction }}</span></td>
+              <td class="numeric">{{ "%.1f"|format(row.confidence * 100) }}%</td>
+              <td class="text-small text-muted">{{ row.model_name }}</td>
+              <td class="text-small text-muted mono">{{ row.created_at|replace('T', ' ')|replace('+00:00', '') }}</td>
+              <td>
+                <form method="POST" action="{{ url_for('delete_history_row', prediction_id=row.id) }}"
+                      data-confirm="Delete prediction #{{ row.id }}?" style="margin:0;">
+                  <button type="submit" class="btn btn-secondary btn-icon btn-sm"
+                          aria-label="Delete prediction {{ row.id }}" title="Delete">&times;</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ---------- Pagination ---------- -->
+    {% if total_pages > 1 %}
+      <nav class="pagination" aria-label="History pages">
+        {% if page > 1 %}
+          <a class="btn btn-secondary btn-sm"
+             href="{{ url_for('history', page=page-1, search=search, filter=label_filter) }}">&larr; Previous</a>
+        {% endif %}
+        <span class="page-info">Page {{ page }} of {{ total_pages }} &middot; {{ "{:,}".format(total) }} result(s)</span>
+        {% if page < total_pages %}
+          <a class="btn btn-secondary btn-sm"
+             href="{{ url_for('history', page=page+1, search=search, filter=label_filter) }}">Next &rarr;</a>
+        {% endif %}
+      </nav>
+    {% else %}
+      <p class="chart-caption">Showing {{ "{:,}".format(total) }} result(s).</p>
+    {% endif %}
+
+    <hr style="border:none; border-top:1px solid var(--border); margin:1.5rem 0;">
+
+    <form method="POST" action="{{ url_for('clear_history') }}"
+          data-confirm="Permanently delete ALL {{ total }} stored prediction(s)? This cannot be undone.">
+      <button type="submit" class="btn btn-danger btn-sm">Clear entire history</button>
+    </form>
+
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-state-icon" aria-hidden="true">&#128203;</div>
+      <h3>{% if search or label_filter %}No matching predictions{% else %}No predictions yet{% endif %}</h3>
+      <p class="text-small">
+        {% if search or label_filter %}
+          Try a different search term or clear the filter.
+        {% else %}
+          Analyze a news item and it will appear here.
+        {% endif %}
+      </p>
+      <a class="btn btn-primary" href="{{ url_for('index') }}">Analyze news</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

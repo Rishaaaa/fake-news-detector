@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Virtual environments
+# ---------------------------------------------------------------------------
+venv/
+env/
+.venv/
+
+# ---------------------------------------------------------------------------
+# Secrets - never commit the real .env (a template is in .env.example)
+# ---------------------------------------------------------------------------
+.env
+
+# ---------------------------------------------------------------------------
+# Datasets
+# The raw dataset is ~30 MB and is downloadable, so it is not tracked.
+# Recreate it with:  python src/dataset.py --download
+# ---------------------------------------------------------------------------
+data/raw/*.csv
+data/processed/*.csv
+data/*.csv
+
+# ---------------------------------------------------------------------------
+# Runtime database (recreated automatically on first run)
+# ---------------------------------------------------------------------------
+database/*.db
+database/*.sqlite3
+
+# NOTE: models/*.pkl and reports/*.png ARE tracked on purpose, so the project
+# can be demonstrated straight after cloning without retraining first.
+
+# ---------------------------------------------------------------------------
+# NLTK data downloaded locally
+# ---------------------------------------------------------------------------
+nltk_data/
+
+# ---------------------------------------------------------------------------
+# Editors and operating systems
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

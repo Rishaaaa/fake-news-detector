@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Analyze News &middot; {{ app_title }}{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Fake News Detection System</h1>
+  <p class="subtitle">
+    AI-powered NLP analysis for identifying potentially misleading news content
+  </p>
+</section>
+
+{% if not model_ready %}
+  <div class="notice notice-warning">
+    <span aria-hidden="true">&#9888;</span>
+    <span>
+      <strong>No trained model found.</strong>
+      Train one before analyzing text by running
+      <code class="mono">python src/train_model.py</code> in the project folder.
+    </span>
+  </div>
+{% endif %}
+
+<div class="split">
+  <!-- ---------- Prediction card ---------- -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <h2>Analyze a news item</h2>
+        <span class="card-title-note">Headline or full article</span>
+      </div>
+
+      <form method="POST" action="{{ url_for('predict') }}" id="predictForm" novalidate>
+        <div class="field">
+          <label class="field-label" for="news_text">
+            <span>Enter news headline or article</span>
+            <span class="char-counter" id="charCounter">0 / {{ "{:,}".format(max_input_length) }}</span>
+          </label>
+          <textarea
+            id="news_text"
+            name="news_text"
+            placeholder="Paste a news headline or the full article text here&#10;&#10;For example: &quot;Scientists confirm that drinking coffee reverses ageing, according to a study nobody can find...&quot;"
+            maxlength="{{ max_input_length }}"
+            aria-describedby="inputHelp"
+            required>{{ submitted_text or '' }}</textarea>
+          <p id="inputHelp" class="text-small text-muted" style="margin:0.5rem 0 0;">
+            Paste a <strong>full news article</strong> &mdash; ideally a paragraph or more.
+            Short headlines and one-line claims leave too few words after preprocessing
+            (under {{ min_signal_words }}) and will be flagged as unreliable.
+          </p>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="analyzeBtn"
+                  {% if not model_ready %}disabled{% endif %}>
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>
+            </svg>
+            Analyze News
+          </button>
+          <button type="button" class="btn btn-secondary" id="clearBtn">Clear</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="sampleBtn">
+            Load sample
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div class="notice">
+      <span aria-hidden="true">&#9432;</span>
+      <span>
+        <strong>How to read the result.</strong> The model compares your text against
+        writing patterns it learned from a labelled news dataset. A prediction of
+        FAKE means the wording resembles articles labelled fake in that dataset &mdash;
+        it is not a verification of the underlying facts.
+      </span>
+    </div>
+  </div>
+
+  <!-- ---------- Side panel ---------- -->
+  <aside>
+    <div class="card">
+      <div class="card-header"><h3>Your usage</h3></div>
+      <dl class="spec-list">
+        <dt>Total analyses</dt><dd>{{ "{:,}".format(stats.total) }}</dd>
+        <dt>Flagged FAKE</dt><dd>{{ "{:,}".format(stats.fake_count) }}</dd>
+        <dt>Flagged REAL</dt><dd>{{ "{:,}".format(stats.real_count) }}</dd>
+        <dt>Avg. confidence</dt>
+        <dd>{% if stats.total %}{{ "%.1f"|format(stats.avg_confidence * 100) }}%{% else %}&mdash;{% endif %}</dd>
+      </dl>
+      <p class="text-small text-muted" style="margin:1rem 0 0;">
+        <a href="{{ url_for('dashboard') }}">Open the analytics dashboard &rarr;</a>
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>How it works</h3></div>
+      <ol class="text-small" style="padding-left:1.1rem; margin:0; color:var(--ink-secondary); line-height:1.8;">
+        <li>Your text is cleaned: URLs, HTML, punctuation and stopwords removed.</li>
+        <li>Remaining words are reduced to their base form (lemmatization).</li>
+        <li>TF-IDF converts the text into a numeric feature vector.</li>
+        <li>A trained classifier scores that vector and returns a probability.</li>
+      </ol>
+    </div>
+
+    {% if stats.recent %}
+    <div class="card">
+      <div class="card-header"><h3>Recent analyses</h3></div>
+      <div class="term-list">
+        {% for row in stats.recent %}
+          <div style="display:flex; gap:0.6rem; align-items:center; font-size:0.83rem;">
+            <span class="badge badge-{{ row.prediction|lower }}">{{ row.prediction }}</span>
+            <span class="text-muted" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              {{ row.input_text[:48] }}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

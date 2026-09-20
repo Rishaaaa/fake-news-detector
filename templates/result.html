@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Result: {{ result.prediction }} &middot; {{ app_title }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Analysis result</h1>
+  <p class="subtitle">
+    Classification produced by the {{ result.model }} model using TF-IDF features.
+  </p>
+</div>
+
+<div class="split">
+  <div>
+    <!-- ---------- Verdict ---------- -->
+    <div class="card">
+      {# A weak result is flagged BEFORE the verdict, so the caveat is read
+         first rather than discovered underneath a confident-looking number. #}
+      {% if result.low_signal %}
+        <div class="notice notice-warning" style="margin:0 0 1.25rem;">
+          <span aria-hidden="true">&#9888;</span>
+          <span>
+            <strong>This result is not reliable.</strong>
+            Only <strong>{{ result.word_count }}</strong> meaningful word(s) remained
+            after preprocessing &mdash; below the {{ min_signal_words }} needed for a
+            dependable classification. The confidence figure below overstates how much
+            the model actually knows. Paste a full article for a meaningful result.
+          </span>
+        </div>
+      {% endif %}
+
+      <div class="verdict verdict-{{ result.prediction|lower }}{% if result.low_signal %} is-unreliable{% endif %}">
+        <div class="verdict-icon" aria-hidden="true">
+          {% if result.prediction == 'FAKE' %}&#9888;{% else %}&#10003;{% endif %}
+        </div>
+        <div class="verdict-body">
+          <div class="verdict-label">Model prediction</div>
+          <div class="verdict-value">{{ result.prediction }}</div>
+
+          <div class="meter">
+            <div class="meter-head">
+              <span class="text-muted">
+                Confidence &middot;
+                {% if result.low_signal %}not reliable{% else %}{{ result.confidence_label }}{% endif %}
+              </span>
+              <span class="meter-value">{{ "%.1f"|format(result.confidence * 100) }}%</span>
+            </div>
+            <div class="meter-track"
+                 role="meter"
+                 aria-valuenow="{{ (result.confidence * 100)|round(1) }}"
+                 aria-valuemin="0" aria-valuemax="100"
+                 aria-label="Model confidence">
+              <div class="meter-fill is-{{ result.prediction|lower }}"
+                   data-width="{{ (result.confidence * 100)|round(1) }}"></div>
+            </div>
+            <div class="meter-scale"><span>0%</span><span>50%</span><span>100%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <p style="margin:0;">{{ result.explanation }}</p>
+    </div>
+
+    <!-- ---------- Class probabilities ---------- -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Class probabilities</h2>
+        <span class="card-title-note">How the model split its confidence</span>
+      </div>
+      {% for label, probability in result.probabilities.items() %}
+        <div class="prob-row">
+          <span class="prob-label">{{ label }}</span>
+          <div class="prob-track">
+            <div class="prob-fill is-{{ label|lower }}"
+                 data-width="{{ (probability * 100)|round(1) }}"></div>
+          </div>
+          <span class="prob-pct">{{ "%.1f"|format(probability * 100) }}%</span>
+        </div>
+      {% endfor %}
+      <p class="chart-caption">
+        The two values sum to 100%. A near-even split means the model could not
+        clearly separate the text into either class.
+      </p>
+    </div>
+
+    <!-- ---------- Explainability ---------- -->
+    {% if result.top_features %}
+    <div class="card">
+      <div class="card-header">
+        <h2>Influential terms</h2>
+        <span class="card-title-note">Why the model leaned {{ result.prediction }}</span>
+      </div>
+      <p class="text-small text-muted">
+        These terms from your text carried the most weight toward the
+        <strong>{{ result.prediction }}</strong> prediction. The bar shows each term's
+        contribution relative to the strongest one.
+      </p>
+      <div class="term-list">
+        {% for feature in result.top_features %}
+          <div class="term-row">
+            <span class="term-name">{{ feature.term }}</span>
+            <div class="term-track">
+              <div class="term-fill" data-width="{{ (feature.weight * 100)|round(1) }}"></div>
+            </div>
+            <span class="prob-pct">{{ "%.2f"|format(feature.contribution) }}</span>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="notice" style="margin:1.25rem 0 0;">
+        <span aria-hidden="true">&#9432;</span>
+        <span>
+          Some words in the submitted text were strongly associated with the model's
+          learned patterns. <strong>Feature importance does not prove factuality</strong> &mdash;
+          it only shows which vocabulary the model has associated with each class in
+          its training data.
+        </span>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="form-actions" style="margin-top:1.5rem;">
+      <a class="btn btn-primary" href="{{ url_for('index') }}">Analyze another</a>
+      <a class="btn btn-secondary" href="{{ url_for('history') }}">View history</a>
+    </div>
+  </div>
+
+  <!-- ---------- Side panel ---------- -->
+  <aside>
+    <div class="card">
+      <div class="card-header"><h3>Analysis details</h3></div>
+      <dl class="spec-list">
+        <dt>Model</dt><dd>{{ result.model }}</dd>
+        <dt>Prediction</dt>
+        <dd><span class="badge badge-{{ result.prediction|lower }}">{{ result.prediction }}</span></dd>
+        <dt>Confidence</dt><dd>{{ "%.2f"|format(result.confidence * 100) }}%</dd>
+        <dt>Certainty</dt><dd>{{ result.confidence_label }}</dd>
+        <dt>Words used</dt><dd>{{ "{:,}".format(result.word_count) }}</dd>
+        <dt>Features</dt><dd>TF-IDF (1&ndash;2 grams)</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Submitted text</h3></div>
+      {# Jinja2 autoescaping renders this safely - user text can never inject markup. #}
+      <div class="text-preview">{{ submitted_text }}</div>
+    </div>
+
+    <div class="notice notice-warning">
+      <span aria-hidden="true">&#9888;</span>
+      <span><strong>Disclaimer:</strong> {{ disclaimer }}</span>
+    </div>
+  </aside>
+</div>
+{% endblock %}

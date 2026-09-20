@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}About &middot; {{ app_title }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>About this project</h1>
+  <p class="subtitle">
+    A machine learning system that classifies news text as FAKE or REAL using
+    natural language processing and supervised classification.
+  </p>
+</div>
+
+<div class="split">
+  <div>
+    <div class="card">
+      <div class="card-header"><h2>Abstract</h2></div>
+      <p>
+        The rapid spread of misinformation through online platforms has made the
+        automatic detection of misleading news an important research problem.
+        This project implements an end-to-end fake news detection system that
+        applies natural language processing to clean and normalise raw news text,
+        converts it into numerical features using TF-IDF vectorization, and
+        classifies it with supervised machine learning algorithms.
+      </p>
+      <p>
+        Four classifiers &mdash; Logistic Regression, Multinomial Naive Bayes,
+        Linear Support Vector Machine and Random Forest &mdash; are trained and
+        compared on a labelled news dataset. The best performing model is selected
+        using cross-validation and deployed behind a Flask web application that
+        provides both an interactive interface and a JSON API.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>How the system works</h2></div>
+      <ol style="padding-left:1.2rem; line-height:1.9;">
+        <li>
+          <strong>Text preprocessing.</strong> Input is lowercased; URLs, HTML tags,
+          punctuation and digits are removed; the text is tokenized; English
+          stopwords are dropped; and each remaining word is lemmatized to its
+          dictionary form.
+        </li>
+        <li>
+          <strong>Feature extraction.</strong> TF-IDF converts the cleaned text into
+          a numeric vector. Terms that are frequent in one document but rare across
+          the corpus receive the highest weights, because those are the terms that
+          best distinguish one document from another.
+        </li>
+        <li>
+          <strong>Classification.</strong> The trained model scores the vector and
+          outputs a class together with a probability.
+        </li>
+        <li>
+          <strong>Explanation.</strong> For linear models, each term's TF-IDF value is
+          multiplied by its learned weight to show which words drove the decision.
+        </li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>Limitations</h2></div>
+      <p>Understanding what this system <em>cannot</em> do matters as much as its accuracy.</p>
+      <ul style="line-height:1.9;">
+        <li>
+          <strong>It does not check facts.</strong> The model recognises writing style
+          and vocabulary patterns. It has no knowledge base and cannot verify whether
+          an event actually happened.
+        </li>
+        <li>
+          <strong>It is bound to its training data.</strong> The dataset covers a
+          particular period and set of topics, largely US political news. Accuracy on
+          current events, other countries or other domains will be lower.
+        </li>
+        <li>
+          <strong>Topic words can be mistaken for style.</strong> If certain names or
+          subjects appear mostly in one class in the training data, the model may
+          learn the topic rather than the deception.
+        </li>
+        <li>
+          <strong>English only.</strong> The stopword list and lemmatizer are English.
+        </li>
+        <li>
+          <strong>Short text is unreliable.</strong> A headline leaves few tokens after
+          preprocessing, so the model has little to work with.
+        </li>
+        <li>
+          <strong>It can be evaded.</strong> Someone who knows the model can write
+          around its learned patterns.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <aside>
+    {% if metrics %}
+    <div class="card">
+      <div class="card-header"><h3>Current model</h3></div>
+      <dl class="spec-list">
+        <dt>Algorithm</dt><dd>{{ metrics.selected_model }}</dd>
+        <dt>Accuracy</dt><dd>{{ "%.2f"|format(metrics.test_metrics.accuracy * 100) }}%</dd>
+        <dt>Precision</dt><dd>{{ "%.2f"|format(metrics.test_metrics.precision * 100) }}%</dd>
+        <dt>Recall</dt><dd>{{ "%.2f"|format(metrics.test_metrics.recall * 100) }}%</dd>
+        <dt>F1-score</dt><dd>{{ "%.2f"|format(metrics.test_metrics.f1 * 100) }}%</dd>
+        <dt>Training rows</dt><dd>{{ "{:,}".format(metrics.dataset.total_rows) }}</dd>
+        <dt>Trained</dt><dd class="text-small">{{ metrics.trained_at[:10] }}</dd>
+      </dl>
+      <p class="chart-caption">
+        Measured on {{ "{:,}".format(metrics.split.test_rows) }} held-out articles.
+      </p>
+    </div>
+    {% else %}
+    <div class="notice notice-warning">
+      <span aria-hidden="true">&#9888;</span>
+      <span>No model has been trained yet. Run
+        <code class="mono">python src/train_model.py</code>.</span>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header"><h3>Technology stack</h3></div>
+      <dl class="spec-list">
+        <dt>Language</dt><dd>Python 3.11+</dd>
+        <dt>ML</dt><dd>scikit-learn</dd>
+        <dt>NLP</dt><dd>NLTK</dd>
+        <dt>Data</dt><dd>pandas, NumPy</dd>
+        <dt>Web</dt><dd>Flask, Jinja2</dd>
+        <dt>Charts</dt><dd>Chart.js, Matplotlib</dd>
+        <dt>Database</dt><dd>SQLite</dd>
+        <dt>Persistence</dt><dd>joblib</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>API</h3></div>
+      <p class="text-small text-muted">Classify text programmatically:</p>
+      <pre class="text-preview mono" style="font-size:0.78rem;">curl -X POST {{ request.url_root }}api/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "your news text here"}'</pre>
+    </div>
+
+    <div class="notice notice-warning">
+      <span aria-hidden="true">&#9888;</span>
+      <span><strong>Disclaimer:</strong> {{ disclaimer }}</span>
+    </div>
+  </aside>
+</div>
+{% endblock %}

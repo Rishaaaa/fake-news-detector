@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Error {{ code }} &middot; {{ app_title }}{% endblock %}
+
+{% block content %}
+<div class="card error-page">
+  <div class="error-code">{{ code }}</div>
+  <h1>{{ message }}</h1>
+  {% if error_id %}
+    <p class="text-small text-muted">
+      Reference id: <code class="mono">{{ error_id }}</code><br>
+      Quote this id when reporting the problem &mdash; the full details are in the server log.
+    </p>
+  {% endif %}
+  <div class="form-actions" style="justify-content:center; margin-top:1.5rem;">
+    <a class="btn btn-primary" href="{{ url_for('index') }}">Back to analyzer</a>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Dashboard</a>
+  </div>
+</div>
+{% endblock %}
