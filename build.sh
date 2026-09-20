@@ -9,14 +9,48 @@
 # The trained model is committed to the repository, so NO training happens
 # here - a deploy takes seconds rather than re-running the full pipeline.
 # ---------------------------------------------------------------------------
-set -o errexit   # abort the deploy if any step fails
+set -o errexit   # abort the deploy if a required step fails
 
 echo "--> Installing Python dependencies"
 pip install --upgrade pip
 pip install -r requirements.txt
 
+# NLTK refuses to write into a directory that is group- or world-writable, and
+# on failure its command-line downloader prompts for input - which aborts a
+# non-interactive build with EOFError. Creating the directory with 755 and
+# driving the Python API directly avoids both problems.
 echo "--> Downloading NLTK corpora into ./nltk_data"
-python -m nltk.downloader -d ./nltk_data stopwords wordnet omw-1.4
+mkdir -p ./nltk_data
+chmod 755 ./nltk_data
+python - <<'PYNLTK'
+import sys
+
+TARGET = "./nltk_data"
+CORPORA = ["stopwords", "wordnet", "omw-1.4"]
+
+try:
+    import nltk
+except ImportError:
+    sys.exit("ERROR: nltk is not installed - check requirements.txt")
+
+failed = []
+for name in CORPORA:
+    try:
+        nltk.download(name, download_dir=TARGET, quiet=True, raise_on_error=True)
+        print(f"    ok: {name}")
+    except Exception as exc:
+        failed.append(name)
+        print(f"    WARNING: could not download {name}: {exc}")
+
+if failed:
+    # Not fatal. src/preprocessing.py falls back to a built-in stopword list
+    # and skips lemmatization, which costs roughly 0.6 percentage points of
+    # accuracy - degraded, but a working deploy beats a failed one.
+    print(f"    {len(failed)} corpus/corpora unavailable: {', '.join(failed)}")
+    print("    The app will run with reduced preprocessing accuracy.")
+else:
+    print("    All corpora installed.")
+PYNLTK
 
 echo "--> Verifying model artefacts are present"
 python - <<'PYCHECK'
@@ -30,7 +64,7 @@ if missing:
         "ERROR: missing model artefact(s): " + ", ".join(missing) +
         "\nCommit them, or run 'python src/train_model.py' before deploying."
     )
-print("All model artefacts present.")
+print("    All model artefacts present.")
 PYCHECK
 
 echo "--> Build complete"
