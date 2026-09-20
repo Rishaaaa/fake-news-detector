@@ -9,12 +9,9 @@ Routes
 GET  /                    prediction form (main dashboard)
 POST /predict             classify text submitted from the form
 GET  /dashboard           analytics dashboard with charts
-GET  /history             searchable, filterable prediction history
-POST /history/clear       delete all history (confirmed in the UI)
-POST /history/delete/<id> delete a single history row
+GET  /history             prediction history (rendered from browser storage)
 GET  /about               project information
 POST /api/predict         JSON prediction API
-GET  /api/stats           JSON usage statistics (feeds the dashboard charts)
 GET  /api/metrics         JSON model evaluation metrics
 GET  /reports/<filename>  serve a generated report chart
 
@@ -25,7 +22,8 @@ Security posture
 * ``MAX_CONTENT_LENGTH`` rejects oversized request bodies before they are read
   into memory.
 * All user text passes through ``src.validation`` before use.
-* All SQL uses bound parameters (see ``src/database.py``).
+* Prediction history is stored in the visitor's browser, never server-side,
+  so the application keeps no user data at rest.
 * Jinja2 autoescaping (on by default for .html) escapes user text on output.
 * Internal exception details are logged server-side and never sent to the
   client; users get a generic message plus an error id.
@@ -50,9 +48,9 @@ from flask import (
 )
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
-from src import config, database
+from src import config
 from src.evaluate_model import load_saved_metrics
-from src.exceptions import DatabaseError, ModelNotFoundError, ValidationError
+from src.exceptions import ModelNotFoundError, ValidationError
 from src.predict import get_predictor
 
 # --------------------------------------------------------------------------
@@ -102,11 +100,7 @@ def _model_is_available() -> bool:
 @app.route("/")
 def index():
     """Render the main prediction form."""
-    return render_template(
-        "index.html",
-        model_ready=_model_is_available(),
-        stats=_safe_statistics(),
-    )
+    return render_template("index.html", model_ready=_model_is_available())
 
 
 @app.route("/predict", methods=["POST"])
@@ -128,7 +122,6 @@ def predict():
                 "index.html",
                 model_ready=_model_is_available(),
                 submitted_text=raw_text,
-                stats=_safe_statistics(),
             ),
             400,
         )
@@ -138,25 +131,12 @@ def predict():
         return (
             render_template(
                 "index.html", model_ready=False, submitted_text=raw_text,
-                stats=_safe_statistics(),
             ),
             503,
         )
 
-    # Persisting history must never break the prediction the user asked for.
-    try:
-        database.save_prediction(
-            input_text=raw_text.strip(),
-            prediction=result["prediction"],
-            confidence=result["confidence"],
-            model_name=result["model"],
-            word_count=result["word_count"],
-            source="web",
-        )
-    except DatabaseError:
-        logger.exception("Could not save prediction to history.")
-        flash("The result could not be saved to history.", "warning")
-
+    # History is written to the visitor's own browser by result.html, not to
+    # the server - see static/js/history-store.js.
     return render_template("result.html", result=result, submitted_text=raw_text)
 
 
@@ -165,7 +145,6 @@ def dashboard():
     """Analytics dashboard: usage statistics plus model evaluation metrics."""
     return render_template(
         "dashboard.html",
-        stats=_safe_statistics(),
         metrics=load_saved_metrics(),
         model_ready=_model_is_available(),
         report_images=[
@@ -177,64 +156,13 @@ def dashboard():
 
 @app.route("/history")
 def history():
-    """Searchable and filterable prediction history with pagination."""
-    search = request.args.get("search", "", type=str).strip()[:200]
-    label_filter = request.args.get("filter", "", type=str).upper()
-    if label_filter not in config.CLASS_NAMES:
-        label_filter = ""
+    """
+    Render the history page shell.
 
-    page = max(1, request.args.get("page", 1, type=int))
-    per_page = config.HISTORY_PAGE_SIZE
-
-    try:
-        total = database.count_predictions(search, label_filter)
-        rows = database.fetch_predictions(
-            search=search,
-            label_filter=label_filter,
-            limit=per_page,
-            offset=(page - 1) * per_page,
-        )
-    except DatabaseError as exc:
-        logger.exception("History query failed.")
-        flash(exc.user_message, "danger")
-        total, rows = 0, []
-
-    total_pages = max(1, -(-total // per_page))  # ceiling division
-    return render_template(
-        "history.html",
-        rows=rows,
-        total=total,
-        page=min(page, total_pages),
-        total_pages=total_pages,
-        search=search,
-        label_filter=label_filter,
-    )
-
-
-@app.route("/history/clear", methods=["POST"])
-def clear_history():
-    """Delete the entire history. The UI confirms before posting here."""
-    try:
-        removed = database.clear_history()
-        flash(f"Cleared {removed} prediction(s) from history.", "success")
-    except DatabaseError as exc:
-        logger.exception("Failed to clear history.")
-        flash(exc.user_message, "danger")
-    return redirect(url_for("history"))
-
-
-@app.route("/history/delete/<int:prediction_id>", methods=["POST"])
-def delete_history_row(prediction_id: int):
-    """Delete a single history row."""
-    try:
-        if database.delete_prediction(prediction_id):
-            flash("Prediction deleted.", "success")
-        else:
-            flash("That prediction no longer exists.", "warning")
-    except DatabaseError as exc:
-        logger.exception("Failed to delete prediction %s.", prediction_id)
-        flash(exc.user_message, "danger")
-    return redirect(request.referrer or url_for("history"))
+    The page has no server-side data: entries are read from the visitor's
+    browser storage by static/js/history-store.js and rendered client-side.
+    """
+    return render_template("history.html")
 
 
 @app.route("/about")
@@ -307,19 +235,6 @@ def api_predict():
         logger.error("API prediction failed - model unavailable: %s", exc)
         return _api_error(exc.user_message, 503)
 
-    try:
-        database.save_prediction(
-            input_text=str(payload["text"]).strip(),
-            prediction=result["prediction"],
-            confidence=result["confidence"],
-            model_name=result["model"],
-            word_count=result["word_count"],
-            source="api",
-        )
-    except DatabaseError:
-        # History is a convenience; never fail the API call over it.
-        logger.exception("Could not save API prediction to history.")
-
     return jsonify(
         {
             "prediction": result["prediction"],
@@ -336,12 +251,6 @@ def api_predict():
             "disclaimer": result["disclaimer"],
         }
     )
-
-
-@app.route("/api/stats")
-def api_stats():
-    """Return usage statistics as JSON (used by the dashboard charts)."""
-    return jsonify(_safe_statistics())
 
 
 @app.route("/api/metrics")
@@ -375,24 +284,6 @@ def _api_error(message: str, status: int, error_id: str | None = None):
     if error_id:
         body["error_id"] = error_id
     return jsonify(body), status
-
-
-def _safe_statistics() -> dict:
-    """
-    Fetch history statistics, degrading gracefully if the database is down.
-
-    The pages that show statistics are still useful without them, so a database
-    failure here returns zeros rather than an error page.
-    """
-    try:
-        return database.get_statistics()
-    except DatabaseError:
-        logger.exception("Could not load statistics.")
-        return {
-            "total": 0, "fake_count": 0, "real_count": 0,
-            "avg_confidence": 0.0, "fake_percentage": 0.0,
-            "real_percentage": 0.0, "daily": [], "recent": [],
-        }
 
 
 def _wants_json() -> bool:
@@ -461,10 +352,6 @@ def handle_unexpected(error):
 def create_app() -> Flask:
     """Initialise dependencies and return the configured Flask app."""
     config.ensure_directories()
-    try:
-        database.init_database()
-    except DatabaseError:
-        logger.exception("Database initialisation failed - history disabled.")
 
     if _model_is_available():
         try:

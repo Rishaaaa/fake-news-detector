@@ -41,7 +41,6 @@ PROCESSED_DATA_DIR: Path = DATA_DIR / "processed"
 
 MODELS_DIR: Path = BASE_DIR / "models"
 REPORTS_DIR: Path = BASE_DIR / "reports"
-DATABASE_DIR: Path = BASE_DIR / "database"
 
 # Candidate locations for the raw dataset, searched in this order.
 # This lets the user drop the CSV in whichever location they find natural.
@@ -61,8 +60,9 @@ MODEL_PATH: Path = MODELS_DIR / "model.pkl"
 VECTORIZER_PATH: Path = MODELS_DIR / "vectorizer.pkl"
 METRICS_PATH: Path = MODELS_DIR / "metrics.json"
 
-# SQLite database used for the prediction history.
-DATABASE_PATH: Path = DATABASE_DIR / "app.db"
+# NOTE: there is no server-side database. Prediction history is stored in the
+# visitor's own browser (see static/js/history-store.js), so the application
+# holds no user data at rest and needs no persistent disk when deployed.
 
 
 # ==========================================================================
@@ -138,8 +138,13 @@ MIN_CLEANED_LENGTH: int = 20
 SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-me")
 
 FLASK_DEBUG: bool = os.environ.get("FLASK_DEBUG", "0").lower() in {"1", "true", "yes"}
-FLASK_HOST: str = os.environ.get("FLASK_HOST", "127.0.0.1")
-FLASK_PORT: int = int(os.environ.get("FLASK_PORT", "5000"))
+
+# Hosting platforms (Render, Railway, Heroku, Fly) inject the port to bind to as
+# PORT, and require binding to 0.0.0.0 rather than localhost - a service bound to
+# 127.0.0.1 is unreachable from outside the container and the deploy will fail
+# its health check. Locally the defaults keep the server private to this machine.
+FLASK_HOST: str = os.environ.get("FLASK_HOST", "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
+FLASK_PORT: int = int(os.environ.get("PORT") or os.environ.get("FLASK_PORT", "5000"))
 
 # --- Input validation limits (see src/validation.py) ---
 MIN_INPUT_LENGTH: int = 20        # characters
@@ -182,9 +187,6 @@ MIN_SIGNAL_WORDS: int = 5
 DOMAIN_MARKER_TOP_N: int = 500
 DOMAIN_RATIO_THRESHOLD: float = 0.10
 
-# Number of history rows shown per page.
-HISTORY_PAGE_SIZE: int = 25
-
 # How many influential words the explainability feature reports.
 TOP_FEATURES_COUNT: int = 8
 
@@ -202,6 +204,5 @@ def ensure_directories() -> None:
         PROCESSED_DATA_DIR,
         MODELS_DIR,
         REPORTS_DIR,
-        DATABASE_DIR,
     ):
         directory.mkdir(parents=True, exist_ok=True)

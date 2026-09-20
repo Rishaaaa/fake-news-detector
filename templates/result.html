@@ -176,3 +176,31 @@
   </aside>
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/history-store.js') }}"></script>
+{# The result is emitted as JSON data and parsed - never interpolated into JS. #}
+<script id="resultData" type="application/json">
+{{ {
+  'input_text': submitted_text,
+  'prediction': result.prediction,
+  'confidence': result.confidence,
+  'model_name': result.model,
+  'word_count': result.word_count,
+  'low_signal': result.low_signal,
+  'out_of_domain': result.out_of_domain
+} | tojson }}
+</script>
+<script>
+(function () {
+  // Saving happens client-side because history lives on this device only.
+  // Guarded so a storage failure can never break the displayed result.
+  try {
+    var node = document.getElementById('resultData');
+    if (node && window.HistoryStore) {
+      window.HistoryStore.add(JSON.parse(node.textContent));
+    }
+  } catch (e) { /* private mode or blocked storage - result still shown */ }
+})();
+</script>
+{% endblock %}

@@ -6,12 +6,9 @@ Tests that require a trained model are skipped automatically when
 models/model.pkl is absent, so the suite still passes on a clean checkout.
 """
 
-import json
-import tempfile
 import unittest
-from pathlib import Path
 
-from src import config, database
+from src import config
 
 VALID_TEXT = (
     "Washington (Reuters) - The Senate approved a bipartisan spending agreement "
@@ -27,17 +24,8 @@ class FlaskTestCase(unittest.TestCase):
     def setUp(self):
         import app as app_module
 
-        self._temp_dir = tempfile.TemporaryDirectory()
-        self._original_path = config.DATABASE_PATH
-        config.DATABASE_PATH = Path(self._temp_dir.name) / "test.db"
-        database.init_database()
-
         app_module.app.config["TESTING"] = True
         self.client = app_module.app.test_client()
-
-    def tearDown(self):
-        config.DATABASE_PATH = self._original_path
-        self._temp_dir.cleanup()
 
 
 class TestPages(FlaskTestCase):
@@ -49,6 +37,16 @@ class TestPages(FlaskTestCase):
 
     def test_history_returns_200(self):
         self.assertEqual(self.client.get("/history").status_code, 200)
+
+    def test_history_page_is_client_side(self):
+        """The shell must load the store and contain no server-rendered rows."""
+        body = self.client.get("/history").get_data(as_text=True)
+        self.assertIn("history-store.js", body)
+        self.assertIn("historyContent", body)
+
+    def test_removed_server_history_endpoints_are_gone(self):
+        self.assertEqual(self.client.post("/history/clear").status_code, 404)
+        self.assertEqual(self.client.get("/api/stats").status_code, 404)
 
     def test_about_returns_200(self):
         self.assertEqual(self.client.get("/about").status_code, 200)
@@ -119,9 +117,13 @@ class TestApiPrediction(FlaskTestCase):
         ).get_json()
         self.assertAlmostEqual(sum(payload["probabilities"].values()), 1.0, places=3)
 
-    def test_prediction_is_saved_to_history(self):
+    def test_prediction_is_not_persisted_server_side(self):
+        """History is a client-side concern - the server must keep nothing."""
         self.client.post("/api/predict", json={"text": VALID_TEXT})
-        self.assertEqual(database.count_predictions(), 1)
+        self.assertFalse(
+            (config.BASE_DIR / "database" / "app.db").exists(),
+            "the server should not create a database file",
+        )
 
     def test_short_input_is_flagged_as_low_signal(self):
         """A one-line claim must be flagged, not reported confidently."""

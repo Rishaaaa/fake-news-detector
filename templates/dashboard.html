@@ -23,27 +23,28 @@
 
 <!-- ---------- Usage stat tiles ---------- -->
 <h2 class="visually-hidden">Usage statistics</h2>
+<p class="text-small text-muted" style="margin:0 0 0.75rem;">
+  Your activity on this device. History is stored in this browser only.
+</p>
 <div class="stat-grid">
   <div class="stat-tile">
     <div class="stat-label">Total predictions</div>
-    <div class="stat-value tabular">{{ "{:,}".format(stats.total) }}</div>
-    <div class="stat-note">Across web and API</div>
+    <div class="stat-value tabular" id="statTotal">0</div>
+    <div class="stat-note">Analyses run in this browser</div>
   </div>
   <div class="stat-tile">
     <div class="stat-label">Predicted fake</div>
-    <div class="stat-value tabular is-fake">{{ "{:,}".format(stats.fake_count) }}</div>
-    <div class="stat-note">{{ stats.fake_percentage }}% of all predictions</div>
+    <div class="stat-value tabular is-fake" id="statFake">0</div>
+    <div class="stat-note"><span id="statFakePct">0</span>% of your predictions</div>
   </div>
   <div class="stat-tile">
     <div class="stat-label">Predicted real</div>
-    <div class="stat-value tabular is-real">{{ "{:,}".format(stats.real_count) }}</div>
-    <div class="stat-note">{{ stats.real_percentage }}% of all predictions</div>
+    <div class="stat-value tabular is-real" id="statReal">0</div>
+    <div class="stat-note"><span id="statRealPct">0</span>% of your predictions</div>
   </div>
   <div class="stat-tile">
     <div class="stat-label">Avg. confidence</div>
-    <div class="stat-value tabular">
-      {% if stats.total %}{{ "%.1f"|format(stats.avg_confidence * 100) }}%{% else %}&mdash;{% endif %}
-    </div>
+    <div class="stat-value tabular" id="statConf">&mdash;</div>
     <div class="stat-note">Mean probability of the chosen class</div>
   </div>
 </div>
@@ -86,20 +87,16 @@
       <h3>Fake vs real predictions</h3>
       <span class="card-title-note">This installation</span>
     </div>
-    {% if stats.total %}
+    <div id="splitChartWrap" hidden>
       <div class="chart-box" style="height:260px;">
         <canvas id="chartSplit" aria-label="Doughnut chart of fake versus real predictions"></canvas>
       </div>
-      <p class="chart-caption">
-        {{ "{:,}".format(stats.fake_count) }} fake &middot;
-        {{ "{:,}".format(stats.real_count) }} real
-      </p>
-    {% else %}
-      <div class="empty-state" style="padding:2rem 1rem;">
-        <p class="text-small">No predictions recorded yet.</p>
-        <a class="btn btn-primary btn-sm" href="{{ url_for('index') }}">Analyze news</a>
-      </div>
-    {% endif %}
+      <p class="chart-caption" id="splitCaption"></p>
+    </div>
+    <div class="empty-state" id="splitEmpty" style="padding:2rem 1rem;">
+      <p class="text-small">No predictions recorded on this device yet.</p>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('index') }}">Analyze news</a>
+    </div>
   </div>
 
   {% if metrics %}
@@ -295,10 +292,10 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/history-store.js') }}"></script>
 {# Chart data is emitted as JSON and parsed by script.js - never interpolated into JS code. #}
 <script id="dashboardData" type="application/json">
 {{ {
-  'usage': {'fake': stats.fake_count, 'real': stats.real_count},
   'models': metrics.model_comparison if metrics else [],
   'perClass': metrics.per_class_metrics if metrics else {}
 } | tojson }}

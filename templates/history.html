@@ -5,115 +5,208 @@
 <div class="page-head">
   <h1>Prediction history</h1>
   <p class="subtitle">
-    Every analysis performed by this installation, stored locally in SQLite.
+    Stored in this browser on this device. Nothing is sent to or kept on the server.
   </p>
 </div>
 
 <div class="card">
-  <!-- ---------- Filters: one row above the table ---------- -->
-  <form method="GET" action="{{ url_for('history') }}" class="toolbar" role="search">
+  <!-- Filters: one row above the table. Handled entirely client-side. -->
+  <div class="toolbar" role="search">
     <div class="grow">
-      <label for="search" class="visually-hidden"></label>
-      <input type="search" id="search" name="search" value="{{ search }}"
-             placeholder="Search stored text&hellip;" aria-label="Search prediction history">
+      <input type="search" id="historySearch" placeholder="Search stored text&hellip;"
+             aria-label="Search prediction history" autocomplete="off">
     </div>
-
-    {# The filter is carried as a hidden field so searching preserves it. #}
-    <input type="hidden" name="filter" value="{{ label_filter }}">
-
     <div class="filter-chips" role="group" aria-label="Filter by prediction">
-      <a class="chip" href="{{ url_for('history', search=search) }}"
-         aria-pressed="{{ 'true' if not label_filter else 'false' }}">All</a>
-      <a class="chip" href="{{ url_for('history', search=search, filter='FAKE') }}"
-         aria-pressed="{{ 'true' if label_filter == 'FAKE' else 'false' }}">Fake</a>
-      <a class="chip" href="{{ url_for('history', search=search, filter='REAL') }}"
-         aria-pressed="{{ 'true' if label_filter == 'REAL' else 'false' }}">Real</a>
+      <button type="button" class="chip" data-filter="" aria-pressed="true">All</button>
+      <button type="button" class="chip" data-filter="FAKE" aria-pressed="false">Fake</button>
+      <button type="button" class="chip" data-filter="REAL" aria-pressed="false">Real</button>
     </div>
+    <button type="button" class="btn btn-secondary btn-sm" id="historyReset">Reset</button>
+  </div>
 
-    <button type="submit" class="btn btn-secondary btn-sm">Search</button>
-    {% if search or label_filter %}
-      <a class="btn btn-secondary btn-sm" href="{{ url_for('history') }}">Reset</a>
-    {% endif %}
-  </form>
+  <!-- Shown when the browser blocks storage (private mode, blocked site data) -->
+  <div class="notice notice-warning" id="storageUnavailable" hidden>
+    <span aria-hidden="true">&#9888;</span>
+    <span>
+      <strong>This browser is blocking local storage.</strong>
+      Predictions will still work, but history cannot be saved on this device.
+      This usually happens in private/incognito windows.
+    </span>
+  </div>
 
-  {% if rows %}
-    <div class="table-wrap">
-      <table>
-        <caption class="visually-hidden">Stored predictions</caption>
-        <thead>
-          <tr>
-            <th scope="col" class="numeric">#</th>
-            <th scope="col">Text</th>
-            <th scope="col">Prediction</th>
-            <th scope="col" class="numeric">Confidence</th>
-            <th scope="col">Model</th>
-            <th scope="col">Date &amp; time (UTC)</th>
-            <th scope="col"><span class="visually-hidden">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in rows %}
-            <tr>
-              <td class="numeric text-muted">{{ row.id }}</td>
-              <td style="max-width:360px;">
-                <div style="overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">
-                  {{ row.input_text }}
-                </div>
-              </td>
-              <td><span class="badge badge-{{ row.prediction|lower }}">{{ row.prediction }}</span></td>
-              <td class="numeric">{{ "%.1f"|format(row.confidence * 100) }}%</td>
-              <td class="text-small text-muted">{{ row.model_name }}</td>
-              <td class="text-small text-muted mono">{{ row.created_at|replace('T', ' ')|replace('+00:00', '') }}</td>
-              <td>
-                <form method="POST" action="{{ url_for('delete_history_row', prediction_id=row.id) }}"
-                      data-confirm="Delete prediction #{{ row.id }}?" style="margin:0;">
-                  <button type="submit" class="btn btn-secondary btn-icon btn-sm"
-                          aria-label="Delete prediction {{ row.id }}" title="Delete">&times;</button>
-                </form>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- ---------- Pagination ---------- -->
-    {% if total_pages > 1 %}
-      <nav class="pagination" aria-label="History pages">
-        {% if page > 1 %}
-          <a class="btn btn-secondary btn-sm"
-             href="{{ url_for('history', page=page-1, search=search, filter=label_filter) }}">&larr; Previous</a>
-        {% endif %}
-        <span class="page-info">Page {{ page }} of {{ total_pages }} &middot; {{ "{:,}".format(total) }} result(s)</span>
-        {% if page < total_pages %}
-          <a class="btn btn-secondary btn-sm"
-             href="{{ url_for('history', page=page+1, search=search, filter=label_filter) }}">Next &rarr;</a>
-        {% endif %}
-      </nav>
-    {% else %}
-      <p class="chart-caption">Showing {{ "{:,}".format(total) }} result(s).</p>
-    {% endif %}
-
-    <hr style="border:none; border-top:1px solid var(--border); margin:1.5rem 0;">
-
-    <form method="POST" action="{{ url_for('clear_history') }}"
-          data-confirm="Permanently delete ALL {{ total }} stored prediction(s)? This cannot be undone.">
-      <button type="submit" class="btn btn-danger btn-sm">Clear entire history</button>
-    </form>
-
-  {% else %}
-    <div class="empty-state">
-      <div class="empty-state-icon" aria-hidden="true">&#128203;</div>
-      <h3>{% if search or label_filter %}No matching predictions{% else %}No predictions yet{% endif %}</h3>
-      <p class="text-small">
-        {% if search or label_filter %}
-          Try a different search term or clear the filter.
-        {% else %}
-          Analyze a news item and it will appear here.
-        {% endif %}
-      </p>
-      <a class="btn btn-primary" href="{{ url_for('index') }}">Analyze news</a>
-    </div>
-  {% endif %}
+  <div id="historyContent"></div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/history-store.js') }}"></script>
+<script>
+(function () {
+  'use strict';
+
+  var search = document.getElementById('historySearch');
+  var reset = document.getElementById('historyReset');
+  var content = document.getElementById('historyContent');
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.chip[data-filter]'));
+  var activeFilter = '';
+
+  if (!window.HistoryStore.isAvailable()) {
+    document.getElementById('storageUnavailable').hidden = false;
+  }
+
+  // Building DOM nodes with textContent rather than innerHTML means stored
+  // text can never be interpreted as markup - the client-side equivalent of
+  // the template autoescaping the server used to provide.
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) { node.className = className; }
+    if (text !== undefined) { node.textContent = text; }
+    return node;
+  }
+
+  function formatDate(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) { return iso; }
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function renderEmpty(filtered) {
+    var wrap = el('div', 'empty-state');
+    wrap.appendChild(el('div', 'empty-state-icon')).textContent = '\u{1F4CB}';
+    wrap.appendChild(el('h3', null,
+      filtered ? 'No matching predictions' : 'No predictions yet'));
+    wrap.appendChild(el('p', 'text-small',
+      filtered ? 'Try a different search term or clear the filter.'
+               : 'Analyze a news item and it will appear here.'));
+    var link = el('a', 'btn btn-primary', 'Analyze news');
+    link.href = '{{ url_for("index") }}';
+    wrap.appendChild(link);
+    return wrap;
+  }
+
+  function renderRows(rows) {
+    var wrap = el('div', 'table-wrap');
+    var table = el('table');
+
+    var thead = el('thead');
+    var headRow = el('tr');
+    ['#', 'Text', 'Prediction', 'Confidence', 'Model', 'Date & time', ''].forEach(
+      function (label, index) {
+        var th = el('th', index === 0 || index === 3 ? 'numeric' : null, label);
+        th.scope = 'col';
+        headRow.appendChild(th);
+      });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = el('tbody');
+    rows.forEach(function (row) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'numeric text-muted', row.id));
+
+      var textCell = el('td');
+      textCell.style.maxWidth = '360px';
+      var clamp = el('div', null, row.input_text);
+      clamp.style.cssText =
+        'overflow:hidden;text-overflow:ellipsis;display:-webkit-box;' +
+        '-webkit-line-clamp:2;-webkit-box-orient:vertical;';
+      textCell.appendChild(clamp);
+      tr.appendChild(textCell);
+
+      var predCell = el('td');
+      var badge = el('span', 'badge badge-' + row.prediction.toLowerCase(),
+                     row.prediction);
+      predCell.appendChild(badge);
+      if (row.low_signal || row.out_of_domain) {
+        var warn = el('span', 'badge badge-neutral', 'unreliable');
+        warn.style.marginLeft = '0.35rem';
+        predCell.appendChild(warn);
+      }
+      tr.appendChild(predCell);
+
+      tr.appendChild(el('td', 'numeric',
+        (row.confidence * 100).toFixed(1) + '%'));
+      tr.appendChild(el('td', 'text-small text-muted', row.model_name));
+      tr.appendChild(el('td', 'text-small text-muted', formatDate(row.created_at)));
+
+      var actionCell = el('td');
+      var del = el('button', 'btn btn-secondary btn-icon btn-sm', '×');
+      del.type = 'button';
+      del.setAttribute('aria-label', 'Delete prediction ' + row.id);
+      del.addEventListener('click', function () {
+        if (window.confirm('Delete prediction #' + row.id + '?')) {
+          window.HistoryStore.remove(row.id);
+          render();
+        }
+      });
+      actionCell.appendChild(del);
+      tr.appendChild(actionCell);
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  function render() {
+    var term = search.value.trim();
+    var rows = window.HistoryStore.query(term, activeFilter);
+    content.textContent = '';
+
+    if (!rows.length) {
+      content.appendChild(renderEmpty(!!(term || activeFilter)));
+      return;
+    }
+
+    content.appendChild(renderRows(rows));
+
+    var summary = el('p', 'chart-caption',
+      'Showing ' + rows.length.toLocaleString() + ' result(s).');
+    content.appendChild(summary);
+
+    var divider = el('hr');
+    divider.style.cssText =
+      'border:none;border-top:1px solid var(--border);margin:1.5rem 0;';
+    content.appendChild(divider);
+
+    var clear = el('button', 'btn btn-danger btn-sm', 'Clear entire history');
+    clear.type = 'button';
+    clear.addEventListener('click', function () {
+      var total = window.HistoryStore.all().length;
+      if (window.confirm(
+        'Permanently delete ALL ' + total + ' stored prediction(s) from this ' +
+        'device? This cannot be undone.')) {
+        window.HistoryStore.clear();
+        render();
+      }
+    });
+    content.appendChild(clear);
+  }
+
+  search.addEventListener('input', render);
+  reset.addEventListener('click', function () {
+    search.value = '';
+    activeFilter = '';
+    chips.forEach(function (c) {
+      c.setAttribute('aria-pressed', c.dataset.filter === '' ? 'true' : 'false');
+    });
+    render();
+  });
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      activeFilter = chip.dataset.filter;
+      chips.forEach(function (c) {
+        c.setAttribute('aria-pressed', String(c === chip));
+      });
+      render();
+    });
+  });
+
+  render();
+})();
+</script>
 {% endblock %}

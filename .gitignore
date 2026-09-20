@@ -30,18 +30,12 @@ data/processed/*.csv
 data/*.csv
 
 # ---------------------------------------------------------------------------
-# Runtime database (recreated automatically on first run)
+# NLTK corpora downloaded by build.sh at deploy time
 # ---------------------------------------------------------------------------
-database/*.db
-database/*.sqlite3
+nltk_data/
 
 # NOTE: models/*.pkl and reports/*.png ARE tracked on purpose, so the project
 # can be demonstrated straight after cloning without retraining first.
-
-# ---------------------------------------------------------------------------
-# NLTK data downloaded locally
-# ---------------------------------------------------------------------------
-nltk_data/
 
 # ---------------------------------------------------------------------------
 # Editors and operating systems

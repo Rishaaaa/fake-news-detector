@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Analyze News &middot; {{ app_title }}{% endblock %}
 
+
 {% block content %}
 <section class="hero">
   <h1>Fake News Detection System</h1>
@@ -82,11 +83,10 @@
     <div class="card">
       <div class="card-header"><h3>Your usage</h3></div>
       <dl class="spec-list">
-        <dt>Total analyses</dt><dd>{{ "{:,}".format(stats.total) }}</dd>
-        <dt>Flagged FAKE</dt><dd>{{ "{:,}".format(stats.fake_count) }}</dd>
-        <dt>Flagged REAL</dt><dd>{{ "{:,}".format(stats.real_count) }}</dd>
-        <dt>Avg. confidence</dt>
-        <dd>{% if stats.total %}{{ "%.1f"|format(stats.avg_confidence * 100) }}%{% else %}&mdash;{% endif %}</dd>
+        <dt>Total analyses</dt><dd id="statTotal">0</dd>
+        <dt>Flagged FAKE</dt><dd id="statFake">0</dd>
+        <dt>Flagged REAL</dt><dd id="statReal">0</dd>
+        <dt>Avg. confidence</dt><dd id="statConf">&mdash;</dd>
       </dl>
       <p class="text-small text-muted" style="margin:1rem 0 0;">
         <a href="{{ url_for('dashboard') }}">Open the analytics dashboard &rarr;</a>
@@ -103,21 +103,14 @@
       </ol>
     </div>
 
-    {% if stats.recent %}
-    <div class="card">
+    <div class="card" id="recentCard" hidden>
       <div class="card-header"><h3>Recent analyses</h3></div>
-      <div class="term-list">
-        {% for row in stats.recent %}
-          <div style="display:flex; gap:0.6rem; align-items:center; font-size:0.83rem;">
-            <span class="badge badge-{{ row.prediction|lower }}">{{ row.prediction }}</span>
-            <span class="text-muted" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              {{ row.input_text[:48] }}
-            </span>
-          </div>
-        {% endfor %}
-      </div>
+      <div class="term-list" id="recentList"></div>
     </div>
-    {% endif %}
   </aside>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/history-store.js') }}"></script>
 {% endblock %}

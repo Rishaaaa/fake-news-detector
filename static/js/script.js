@@ -132,7 +132,62 @@
     });
   });
 
-  /* ---------- 6. Dashboard charts ------------------------------------- */
+  /* ---------- 6. Per-device usage statistics --------------------------- */
+  // The stat tiles on the home page and the dashboard are filled from the
+  // visitor's own browser storage, because history is never sent to the server.
+  function renderUsageStats() {
+    if (!window.HistoryStore) { return null; }
+    var stats = window.HistoryStore.stats();
+
+    function put(id, value) {
+      var node = document.getElementById(id);
+      if (node) { node.textContent = value; }
+    }
+
+    put('statTotal', stats.total.toLocaleString());
+    put('statFake', stats.fake_count.toLocaleString());
+    put('statReal', stats.real_count.toLocaleString());
+    put('statConf', stats.total ? (stats.avg_confidence * 100).toFixed(1) + '%' : '\u2014');
+    put('statFakePct', stats.fake_percentage);
+    put('statRealPct', stats.real_percentage);
+
+    // "Recent analyses" list on the home page.
+    var list = document.getElementById('recentList');
+    var card = document.getElementById('recentCard');
+    if (list && card) {
+      list.textContent = '';
+      if (stats.recent.length) {
+        card.hidden = false;
+        stats.recent.forEach(function (row) {
+          var line = document.createElement('div');
+          line.style.cssText =
+            'display:flex;gap:0.6rem;align-items:center;font-size:0.83rem;';
+
+          var badge = document.createElement('span');
+          badge.className = 'badge badge-' + row.prediction.toLowerCase();
+          badge.textContent = row.prediction;
+
+          // textContent, not innerHTML - stored text is never treated as markup.
+          var text = document.createElement('span');
+          text.className = 'text-muted';
+          text.style.cssText =
+            'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          text.textContent = row.input_text.slice(0, 48);
+
+          line.appendChild(badge);
+          line.appendChild(text);
+          list.appendChild(line);
+        });
+      } else {
+        card.hidden = true;
+      }
+    }
+    return stats;
+  }
+
+  renderUsageStats();
+
+  /* ---------- 7. Dashboard charts ------------------------------------- */
   var chartInstances = [];
 
   function cssVar(name) {
@@ -147,6 +202,7 @@
   window.initDashboardCharts = function () {
     var dataElement = document.getElementById('dashboardData');
     if (!dataElement || typeof window.Chart === 'undefined') { return; }
+
 
     var data;
     try {
@@ -185,15 +241,29 @@
       boxPadding: 4
     };
 
-    /* --- Fake vs real doughnut --- */
+    /* --- Fake vs real doughnut (from this device's history) --- */
+    var usage = renderUsageStats() || { fake_count: 0, real_count: 0, total: 0 };
+    var splitWrap = document.getElementById('splitChartWrap');
+    var splitEmpty = document.getElementById('splitEmpty');
+    if (splitWrap && splitEmpty) {
+      splitWrap.hidden = usage.total === 0;
+      splitEmpty.hidden = usage.total > 0;
+    }
+    var splitCaption = document.getElementById('splitCaption');
+    if (splitCaption) {
+      splitCaption.textContent =
+        usage.fake_count.toLocaleString() + ' fake \u00B7 ' +
+        usage.real_count.toLocaleString() + ' real';
+    }
+
     var splitCanvas = document.getElementById('chartSplit');
-    if (splitCanvas && (data.usage.fake + data.usage.real) > 0) {
+    if (splitCanvas && usage.total > 0) {
       chartInstances.push(new Chart(splitCanvas, {
         type: 'doughnut',
         data: {
           labels: ['FAKE', 'REAL'],
           datasets: [{
-            data: [data.usage.fake, data.usage.real],
+            data: [usage.fake_count, usage.real_count],
             // Status colours: these are states, not arbitrary series.
             backgroundColor: [fake, real],
             borderColor: surface,

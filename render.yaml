@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# Render deployment blueprint.
+#
+# With this file committed, Render can create the service automatically:
+#   render.com -> New -> Blueprint -> pick this repository.
+#
+# Notes:
+#   * `plan: free` sleeps after ~15 minutes idle; the next visit takes
+#     30-50 seconds to wake. Fine for sharing a demo link, not for a live
+#     service.
+#   * No disk is attached. None is needed: prediction history is stored in
+#     each visitor's browser, so the app keeps no state on the server.
+# ---------------------------------------------------------------------------
+services:
+  - type: web
+    name: fake-news-detector
+    runtime: python
+    plan: free
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # Generated once by Render and kept secret - never commit a real key.
+      - key: SECRET_KEY
+        generateValue: true
+      # Debug must stay off in production: it exposes an interactive console.
+      - key: FLASK_DEBUG
+        value: "0"

@@ -41,9 +41,3 @@ class ValidationError(FakeNewsError):
     """Raised when user-supplied input fails validation."""
 
     user_message = "The submitted text is not valid."
-
-
-class DatabaseError(FakeNewsError):
-    """Raised when a SQLite operation fails."""
-
-    user_message = "The prediction history is temporarily unavailable."

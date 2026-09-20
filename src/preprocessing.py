@@ -36,9 +36,36 @@ import html
 import logging
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Iterable, List, Literal
 
 logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------
+# Hosting platforms build the app into a container where the home directory is
+# not the one NLTK searches at runtime. The deploy script downloads the corpora
+# into a project-local `nltk_data/` folder; registering it here means the
+# lemmatizer and stopword list are found in production exactly as they are
+# locally. Missing data is not fatal - the pipeline falls back (see below) -
+# but the fallback costs about 0.6 percentage points of accuracy, because the
+# model was trained on lemmatized text.
+# --------------------------------------------------------------------------
+def _register_local_nltk_data() -> None:
+    """Add the bundled ``nltk_data/`` directory to NLTK's search path."""
+    local_path = Path(__file__).resolve().parent.parent / "nltk_data"
+    if not local_path.is_dir():
+        return
+    try:
+        import nltk
+
+        if str(local_path) not in nltk.data.path:
+            nltk.data.path.insert(0, str(local_path))
+            logger.debug("Registered NLTK data directory: %s", local_path)
+    except ImportError:  # pragma: no cover - NLTK is optional at import time
+        pass
+
+
+_register_local_nltk_data()
 
 # --------------------------------------------------------------------------
 # Compiled regular expressions.

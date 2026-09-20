@@ -25,9 +25,10 @@ using Natural Language Processing and supervised machine learning.
 14. [Results](#14-results)
 15. [Testing](#15-testing)
 16. [Project structure](#16-project-structure)
-17. [Limitations](#17-limitations)
-18. [Future enhancements](#18-future-enhancements)
-19. [Disclaimer](#19-disclaimer)
+17. [Deploying a shareable link](#17-deploying-a-shareable-link)
+18. [Limitations](#18-limitations)
+19. [Future enhancements](#19-future-enhancements)
+20. [Disclaimer](#20-disclaimer)
 
 ---
 
@@ -77,7 +78,7 @@ knowledge base and cannot verify claims — it recognises linguistic patterns.
 5. Evaluate performance with accuracy, precision, recall, F1-score and a confusion matrix.
 6. Deploy the trained model in a responsive, accessible web application.
 7. Provide a JSON API for programmatic access.
-8. Persist prediction history in a database with search and filtering.
+8. Persist prediction history on the user's own device with search and filtering.
 9. Explain predictions by surfacing the terms that influenced them.
 10. Communicate results responsibly, with clear limitations and disclaimers.
 
@@ -100,12 +101,12 @@ knowledge base and cannot verify claims — it recognises linguistic patterns.
 - Animated confidence meter and class-probability breakdown
 - **Explainability panel** showing which terms drove each prediction
 - Analytics dashboard with interactive Chart.js charts
-- Searchable, filterable, paginated prediction history
+- Searchable, filterable prediction history, stored on your own device
 - JSON API with proper HTTP status codes
 
 ### Engineering
 - Input validation with length limits and sanitisation
-- Parameterised SQL throughout (no string-built queries)
+- No server-side user data at rest — history never leaves the visitor's browser
 - Jinja2 autoescaping on all user-supplied output
 - Secrets read from the environment, never hard-coded
 - Internal errors logged server-side with a reference id; never shown to users
@@ -125,7 +126,7 @@ knowledge base and cannot verify claims — it recognises linguistic patterns.
 | Web framework | Flask, Jinja2 |
 | Frontend | HTML5, CSS3, vanilla JavaScript |
 | Charts | Chart.js (web), Matplotlib + Seaborn (reports) |
-| Database | SQLite |
+| Storage | Browser localStorage (no server-side database) |
 | Testing | unittest (standard library) |
 
 ---
@@ -147,11 +148,11 @@ upward during prediction.
 └──────────┬────────────────────────────────┬──────────────────┘
            │                                │
 ┌──────────▼──────────────────┐  ┌──────────▼──────────────────┐
-│     ML SERVICE LAYER        │  │     PERSISTENCE LAYER       │
-│  predict.py                 │  │  database.py                │
-│  preprocessing.py           │  │  SQLite (app.db)            │
-│  ↓ loads                    │  │  predictions table          │
-│  model.pkl · vectorizer.pkl │  │                             │
+│     ML SERVICE LAYER        │  │   CLIENT-SIDE PERSISTENCE   │
+│  predict.py                 │  │  history-store.js           │
+│  preprocessing.py           │  │  Browser localStorage       │
+│  ↓ loads                    │  │  (per device, never sent     │
+│  model.pkl · vectorizer.pkl │  │   to the server)            │
 └──────────▲──────────────────┘  └─────────────────────────────┘
            │ produced offline by
 ┌──────────┴───────────────────────────────────────────────────┐
@@ -542,13 +543,12 @@ favouring one class.
 python -m unittest discover -s tests -v
 ```
 
-61 tests covering:
+55 tests covering:
 
 | Suite | Coverage |
 |-------|----------|
 | `test_preprocessing.py` | All nine pipeline steps, determinism, edge cases (None/NaN/empty) |
 | `test_validation.py` | Length limits, empty input, control characters, safe error messages |
-| `test_database.py` | CRUD, search, filtering, pagination, statistics, **SQL injection safety** |
 | `test_api.py` | All routes, JSON error handling, status codes, **XSS escaping**, path traversal |
 
 Tests needing a trained model skip automatically when `models/model.pkl` is absent, so
@@ -562,9 +562,13 @@ the suite passes on a clean checkout.
 fake_news_detection/
 │
 ├── app.py                      # Flask application: routes, API, error handlers
+├── wsgi.py                     # Production entry point (gunicorn wsgi:app)
+├── build.sh                    # Deploy build: deps + NLTK corpora
+├── render.yaml                 # Render deployment blueprint
+├── Procfile                    # Start command for Railway / Heroku-style hosts
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # This file
-├── .gitignore                  # Excludes venv, datasets, database, .env
+├── .gitignore                  # Excludes venv, datasets, nltk_data, .env
 ├── .env.example                # Environment variable template
 │
 ├── data/
@@ -584,8 +588,7 @@ fake_news_detection/
 │   ├── train_model.py          # Training pipeline and model selection
 │   ├── evaluate_model.py       # Metrics and report charts
 │   ├── predict.py              # Prediction service and explainability
-│   ├── validation.py           # User input validation
-│   └── database.py             # SQLite persistence
+│   └── validation.py           # User input validation
 │
 ├── templates/                  # Jinja2 templates
 │   ├── base.html  index.html  result.html
@@ -594,9 +597,9 @@ fake_news_detection/
 ├── static/
 │   ├── css/style.css           # Design tokens, components, light/dark themes
 │   ├── js/script.js            # Theme toggle, counter, Chart.js charts
+│   ├── js/history-store.js     # Prediction history in browser localStorage
 │   └── images/                 # Screenshots
 │
-├── database/app.db             # SQLite database (created on first run)
 │
 ├── reports/                    # Generated evaluation charts
 │   ├── confusion_matrix.png  model_comparison.png  performance_metrics.png
@@ -610,7 +613,76 @@ fake_news_detection/
 
 ---
 
-## 17. Limitations
+## 17. Deploying a shareable link
+
+The app is a Python service, so it needs a Python host — GitHub Pages and other
+static hosts cannot run it.
+
+Everything needed is already committed: `wsgi.py` (gunicorn entry point),
+`build.sh` (installs dependencies and NLTK corpora), `render.yaml` and `Procfile`.
+The trained model is committed too, so **no training runs during deploy** — it
+takes seconds.
+
+### Render (recommended, free)
+
+1. Push this repository to GitHub.
+2. Go to [render.com](https://render.com) → sign in with GitHub.
+3. **New → Blueprint** → select this repository. Render reads `render.yaml` and
+   configures everything, generating a secure `SECRET_KEY` automatically.
+4. Click **Apply** and wait 2–4 minutes.
+
+Your link: `https://fake-news-detector-XXXX.onrender.com`
+
+> **Free tier sleeps** after ~15 minutes idle. The first visit after that takes
+> 30–50 seconds to wake up, then it is fast. Fine for sharing a demo; open the
+> link yourself a minute before a presentation so it is already awake.
+
+### Any other host
+
+`Procfile` works on Railway, Heroku and similar platforms:
+
+```
+web: gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60
+```
+
+Set these environment variables:
+
+| Variable | Value | Why |
+|----------|-------|-----|
+| `SECRET_KEY` | a long random string | Signs session cookies — never reuse the dev default |
+| `FLASK_DEBUG` | `0` | Debug mode exposes an interactive console to anyone who triggers an error |
+| `PORT` | set by the platform | The app binds to it automatically |
+
+Generate a key with:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### Testing the production setup locally
+
+```bash
+PORT=8000 SECRET_KEY=local-test gunicorn wsgi:app --bind 0.0.0.0:8000
+```
+
+### Why no database is needed
+
+Prediction history lives in each visitor's browser (`localStorage`), not on the
+server. This matters for deployment: free hosting tiers have an **ephemeral
+filesystem**, so a server-side SQLite file would be wiped on every redeploy and
+every sleep/wake cycle. Storing history client-side means:
+
+- nothing is lost when the server restarts;
+- no disk needs to be provisioned or paid for;
+- each visitor sees only their own history, so a shared link stays private;
+- the server keeps no user data at rest.
+
+The trade-off: history does not follow a user to another browser or device, and
+clearing site data erases it.
+
+---
+
+## 18. Limitations
 
 Understanding what the system **cannot** do matters as much as its accuracy.
 
@@ -650,7 +722,7 @@ Understanding what the system **cannot** do matters as much as its accuracy.
 
 ---
 
-## 18. Future enhancements
+## 19. Future enhancements
 
 | Enhancement | Benefit |
 |-------------|---------|
@@ -667,7 +739,7 @@ Understanding what the system **cannot** do matters as much as its accuracy.
 
 ---
 
-## 19. Disclaimer
+## 20. Disclaimer
 
 > **This system provides an ML-based classification and should not be treated as a
 > substitute for professional fact-checking.**

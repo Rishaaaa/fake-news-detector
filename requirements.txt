@@ -27,3 +27,8 @@ seaborn>=0.13.0
 # --- Web application -------------------------------------------------------
 Flask>=3.0.0
 python-dotenv>=1.0.0
+
+# --- Production server -----------------------------------------------------
+# Flask's built-in server is single-threaded and explicitly not for production.
+# gunicorn is what actually serves the app once deployed.
+gunicorn>=21.2.0
